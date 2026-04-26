@@ -1,0 +1,82 @@
+import AppKit
+import Foundation
+
+struct BrowserFileItem: Identifiable, Hashable {
+    let id: String
+    let url: URL
+    let name: String
+    let modificationDate: Date?
+    let size: Int64?
+    let isDirectory: Bool
+    let isPackage: Bool
+    let typeDescription: String
+
+    init(url: URL, resourceValues: URLResourceValues) {
+        self.url = url
+        name = url.lastPathComponent
+        id = url.path
+        modificationDate = resourceValues.contentModificationDate
+        isDirectory = resourceValues.isDirectory == true
+        isPackage = resourceValues.isPackage == true || url.pathExtension.lowercased() == "app"
+        typeDescription = resourceValues.localizedTypeDescription ?? (isDirectory ? "Folder" : "File")
+
+        if isDirectory {
+            size = nil
+        } else {
+            size = Int64(resourceValues.fileSize ?? 0)
+        }
+    }
+}
+
+enum FileBrowserService {
+    static func contents(of url: URL) throws -> [BrowserFileItem] {
+        let keys: Set<URLResourceKey> = [
+            .contentModificationDateKey,
+            .fileSizeKey,
+            .isDirectoryKey,
+            .isHiddenKey,
+            .isPackageKey,
+            .localizedTypeDescriptionKey
+        ]
+
+        let urls = try FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsPackageDescendants]
+        )
+
+        return urls.compactMap { itemURL in
+            guard let values = try? itemURL.resourceValues(forKeys: keys),
+                  values.isHidden != true else { return nil }
+            return BrowserFileItem(url: itemURL, resourceValues: values)
+        }
+        .sorted { lhs, rhs in
+            if lhs.isDirectory != rhs.isDirectory {
+                return lhs.isDirectory && !rhs.isDirectory
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+}
+
+extension BrowserFileItem {
+    var canBrowseInline: Bool {
+        isDirectory && !isPackage
+    }
+
+    var iconName: String {
+        let ext = url.pathExtension.lowercased()
+        if ext == "app" { return "app.fill" }
+        if canBrowseInline { return "folder.fill" }
+        switch ext {
+        case "swift", "js", "ts", "tsx", "jsx", "py", "json", "md", "html", "css":
+            return "doc.text"
+        case "png", "jpg", "jpeg", "gif", "webp", "heic":
+            return "photo"
+        case "zip", "tar", "gz", "dmg":
+            return "archivebox"
+        default:
+            return "doc"
+        }
+    }
+}
