@@ -3,27 +3,13 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject private var store: WorkspaceStore
     @Binding var focusedDirectoryID: UUID?
-    let collapse: () -> Void
     @State private var workspaceToRename: Workspace?
     @State private var renameDraft = ""
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Spacer()
-
-                Button {
-                    collapse()
-                } label: {
-                    Image(systemName: "sidebar.left")
-                        .font(.system(size: 18, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("Collapse sidebar")
-            }
-            .padding(.horizontal, 18)
-            .frame(height: 50)
+            Color.clear
+                .frame(height: 50)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -128,29 +114,6 @@ struct SidebarView: View {
     }
 }
 
-struct CollapsedSidebarHandle: View {
-    let expand: () -> Void
-
-    var body: some View {
-        VStack {
-            Button {
-                expand()
-            } label: {
-                Image(systemName: "sidebar.left")
-                    .font(.system(size: 18, weight: .medium))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Expand sidebar")
-            .padding(.top, 18)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
-    }
-}
-
 struct WorkspaceSidebarRow: View {
     let workspace: Workspace
     let isSelected: Bool
@@ -197,4 +160,3 @@ struct WorkspaceSidebarRow: View {
         }
     }
 }
-

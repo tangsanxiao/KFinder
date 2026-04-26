@@ -10,22 +10,18 @@ struct ContentView: View {
         HStack(spacing: 0) {
             if isSidebarVisible {
                 SidebarView(
-                    focusedDirectoryID: $focusedDirectoryID,
-                    collapse: { isSidebarVisible = false }
+                    focusedDirectoryID: $focusedDirectoryID
                 )
                 .frame(width: 250)
 
                 Divider()
-            } else {
-                CollapsedSidebarHandle {
-                    isSidebarVisible = true
-                }
-                .frame(width: 44)
-
-                Divider()
             }
 
-            WorkspaceDetailView(focusedDirectoryID: $focusedDirectoryID, paneViewModes: $paneViewModes)
+            WorkspaceDetailView(
+                focusedDirectoryID: $focusedDirectoryID,
+                paneViewModes: $paneViewModes,
+                isSidebarVisible: $isSidebarVisible
+            )
         }
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowChromeConfigurator())

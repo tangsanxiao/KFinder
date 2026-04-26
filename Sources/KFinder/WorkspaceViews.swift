@@ -4,11 +4,17 @@ struct WorkspaceDetailView: View {
     @EnvironmentObject private var store: WorkspaceStore
     @Binding var focusedDirectoryID: UUID?
     @Binding var paneViewModes: [UUID: BrowserViewMode]
+    @Binding var isSidebarVisible: Bool
 
     var body: some View {
         if let workspace = store.selectedWorkspace {
             VStack(spacing: 0) {
-                FinderLikeToolbar(workspace: workspace, focusedDirectoryID: $focusedDirectoryID, paneViewModes: $paneViewModes)
+                FinderLikeToolbar(
+                    workspace: workspace,
+                    focusedDirectoryID: $focusedDirectoryID,
+                    paneViewModes: $paneViewModes,
+                    isSidebarVisible: $isSidebarVisible
+                )
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
 
@@ -31,10 +37,13 @@ private struct FinderLikeToolbar: View {
     let workspace: Workspace
     @Binding var focusedDirectoryID: UUID?
     @Binding var paneViewModes: [UUID: BrowserViewMode]
+    @Binding var isSidebarVisible: Bool
     @State private var isLayoutPopoverShown = false
 
     var body: some View {
         HStack(spacing: 14) {
+            leadingControls
+
             Text(store.paneTitle(for: focusedDirectoryID))
                 .font(.system(size: 20, weight: .semibold))
                 .lineLimit(1)
@@ -56,11 +65,8 @@ private struct FinderLikeToolbar: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 156)
-
-            Spacer()
-
-            layoutMenu
         }
+        .padding(.leading, isSidebarVisible ? 0 : 66)
         .frame(height: 44)
         .background(Color(nsColor: .windowBackgroundColor))
         .onTapGesture(count: 2) {
@@ -79,6 +85,21 @@ private struct FinderLikeToolbar: View {
                 paneViewModes[focusedDirectoryID] = newValue
             }
         )
+    }
+
+    private var leadingControls: some View {
+        HStack(spacing: 4) {
+            Button {
+                isSidebarVisible.toggle()
+            } label: {
+                Image(systemName: "sidebar.left")
+                    .frame(width: 30, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .help(isSidebarVisible ? "Collapse sidebar" : "Expand sidebar")
+
+            layoutMenu
+        }
     }
 
     private var layoutMenu: some View {
