@@ -15,6 +15,7 @@ struct BrowserPane: View {
     @State private var expandedContents: [String: [BrowserFileItem]] = [:]
     @State private var selection: BrowserFileItem.ID?
     @State private var errorMessage: String?
+    @State private var toolbarTooltip: String?
 
     init(root: DirectoryItem, isFocused: Bool, viewMode: BrowserViewMode, onFocus: @escaping () -> Void) {
         self.root = root
@@ -159,69 +160,89 @@ struct BrowserPane: View {
     }
 
     private var paneToolbar: some View {
-        HStack(spacing: 8) {
-            Button {
-                onFocus()
-                goBack()
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(backStack.isEmpty)
-            .help("Back")
+        ZStack(alignment: .topTrailing) {
+            HStack(spacing: 8) {
+                Button {
+                    onFocus()
+                    goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(backStack.isEmpty)
+                .help("Back")
 
-            Button {
-                onFocus()
-                goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(forwardStack.isEmpty)
-            .help("Forward")
+                Button {
+                    onFocus()
+                    goForward()
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(forwardStack.isEmpty)
+                .help("Forward")
 
-            Button {
-                onFocus()
-                goUp()
-            } label: {
-                Image(systemName: "arrow.up")
-            }
-            .disabled(currentURL.path == "/")
-            .help("Parent folder")
+                Button {
+                    onFocus()
+                    goUp()
+                } label: {
+                    Image(systemName: "arrow.up")
+                }
+                .disabled(currentURL.path == "/")
+                .help("Parent folder")
 
-            pathCrumbs
-            Spacer(minLength: 8)
+                pathCrumbs
+                Spacer(minLength: 8)
 
-            Button {
-                onFocus()
-                NSWorkspace.shared.activateFileViewerSelecting([currentURL])
-            } label: {
-                Image(systemName: "arrow.up.forward.app")
-                    .frame(width: 24, height: 24)
-            }
-            .accessibilityLabel("Reveal in Finder")
-            .help("Reveal current folder in Finder")
+                PaneToolbarActionButton(
+                    systemImage: "arrow.up.forward.app",
+                    accessibilityLabel: "Reveal in Finder",
+                    tooltip: "在 Finder 中显示当前目录",
+                    hoveredTooltip: $toolbarTooltip
+                ) {
+                    onFocus()
+                    NSWorkspace.shared.activateFileViewerSelecting([currentURL])
+                }
 
-            Button {
-                onFocus()
-                copyPath(currentURL.path)
-            } label: {
-                Image(systemName: "doc.on.doc")
-                    .frame(width: 24, height: 24)
-            }
-            .accessibilityLabel("Copy Path")
-            .help("Copy current folder path")
+                PaneToolbarActionButton(
+                    systemImage: "doc.on.doc",
+                    accessibilityLabel: "Copy Path",
+                    tooltip: "复制当前目录路径",
+                    hoveredTooltip: $toolbarTooltip
+                ) {
+                    onFocus()
+                    copyPath(currentURL.path)
+                }
 
-            Button {
-                onFocus()
-                store.removeDirectory(root)
-            } label: {
-                Image(systemName: "xmark.circle")
-                    .frame(width: 24, height: 24)
+                PaneToolbarActionButton(
+                    systemImage: "xmark.circle",
+                    accessibilityLabel: "Close Pane",
+                    tooltip: "关闭当前文件管理面板",
+                    hoveredTooltip: $toolbarTooltip
+                ) {
+                    onFocus()
+                    store.removeDirectory(root)
+                }
             }
-            .accessibilityLabel("Close Pane")
-            .help("Close this pane")
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+
+            if let toolbarTooltip {
+                Text(toolbarTooltip)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(Color.black.opacity(0.82))
+                    )
+                    .fixedSize()
+                    .padding(.trailing, 10)
+                    .offset(y: 34)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .zIndex(3)
+            }
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 12)
         .frame(height: 44)
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -458,4 +479,27 @@ private struct FileTreeRow: Identifiable {
     let depth: Int
 
     var id: String { "\(file.id)-\(depth)" }
+}
+
+private struct PaneToolbarActionButton: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let tooltip: String
+    @Binding var hoveredTooltip: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .help(tooltip)
+        .onHover { isHovered in
+            withAnimation(.easeOut(duration: 0.08)) {
+                hoveredTooltip = isHovered ? tooltip : nil
+            }
+        }
+    }
 }
