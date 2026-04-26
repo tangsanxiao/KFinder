@@ -64,7 +64,7 @@ private struct FinderLikeToolbar: View {
         .frame(height: 44)
         .background(Color(nsColor: .windowBackgroundColor))
         .onTapGesture(count: 2) {
-            NSApp.keyWindow?.performZoom(nil)
+            WindowZoomController.toggle()
         }
     }
 

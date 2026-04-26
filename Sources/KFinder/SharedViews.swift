@@ -47,3 +47,22 @@ struct WindowChromeConfigurator: NSViewRepresentable {
         window.toolbar = nil
     }
 }
+
+@MainActor
+enum WindowZoomController {
+    private static var restoreFrames: [ObjectIdentifier: NSRect] = [:]
+
+    static func toggle(window: NSWindow? = NSApp.keyWindow) {
+        guard let window, let screen = window.screen else { return }
+
+        let key = ObjectIdentifier(window)
+        if let restoreFrame = restoreFrames[key] {
+            window.setFrame(restoreFrame, display: true, animate: true)
+            restoreFrames[key] = nil
+            return
+        }
+
+        restoreFrames[key] = window.frame
+        window.setFrame(screen.visibleFrame, display: true, animate: true)
+    }
+}
