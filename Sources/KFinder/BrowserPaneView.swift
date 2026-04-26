@@ -357,12 +357,41 @@ struct BrowserPane: View {
     }
 
     private func resolvedColumnWidths(for paneWidth: CGFloat) -> FileListColumnWidths {
+        let contentWidth = max(
+            FileListColumnWidths.minName + FileListColumnWidths.minModified + FileListColumnWidths.minSize + FileListColumnWidths.minKind,
+            paneWidth - 28
+        )
         var widths = columnWidths
         widths.name = max(FileListColumnWidths.minName, widths.name)
         widths.modified = max(FileListColumnWidths.minModified, widths.modified)
         widths.size = max(FileListColumnWidths.minSize, widths.size)
         widths.kind = max(FileListColumnWidths.minKind, widths.kind)
+
+        let total = widths.name + widths.modified + widths.size + widths.kind
+        if total < contentWidth {
+            widths.name += contentWidth - total
+        } else if total > contentWidth {
+            shrinkColumns(&widths, by: total - contentWidth)
+        }
+
         return widths
+    }
+
+    private func shrinkColumns(_ widths: inout FileListColumnWidths, by overflow: CGFloat) {
+        var remaining = overflow
+
+        func reduce(_ keyPath: WritableKeyPath<FileListColumnWidths, CGFloat>, minimum: CGFloat) {
+            guard remaining > 0 else { return }
+            let available = max(0, widths[keyPath: keyPath] - minimum)
+            let reduction = min(available, remaining)
+            widths[keyPath: keyPath] -= reduction
+            remaining -= reduction
+        }
+
+        reduce(\.name, minimum: FileListColumnWidths.minName)
+        reduce(\.kind, minimum: FileListColumnWidths.minKind)
+        reduce(\.modified, minimum: FileListColumnWidths.minModified)
+        reduce(\.size, minimum: FileListColumnWidths.minSize)
     }
 
     private func resizeColumn(_ boundary: ColumnResizeBoundary, phase: ResizePhase, delta: CGFloat, paneWidth: CGFloat) {

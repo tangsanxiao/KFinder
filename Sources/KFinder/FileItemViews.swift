@@ -6,10 +6,10 @@ struct FileListColumnWidths: Equatable {
     var size: CGFloat = 114
     var kind: CGFloat = 136
 
-    static let minName: CGFloat = 90
-    static let minModified: CGFloat = 105
-    static let minSize: CGFloat = 70
-    static let minKind: CGFloat = 80
+    static let minName: CGFloat = 72
+    static let minModified: CGFloat = 82
+    static let minSize: CGFloat = 54
+    static let minKind: CGFloat = 58
 }
 
 struct FileRow: View {
