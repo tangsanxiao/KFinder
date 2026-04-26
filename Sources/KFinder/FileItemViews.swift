@@ -7,6 +7,7 @@ struct FileRow: View {
     let isSelected: Bool
     let isActivePane: Bool
     let isRenaming: Bool
+    let nameColumnWidth: CGFloat
     @Binding var renameDraft: String
     let destinations: [PaneDestination]
     let select: () -> Void
@@ -44,7 +45,7 @@ struct FileRow: View {
 
                 nameContent
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(width: nameColumnWidth, alignment: .leading)
             .padding(.leading, CGFloat(depth) * 18)
 
             Text(DisplayFormatters.date(file.modificationDate))

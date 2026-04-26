@@ -113,52 +113,60 @@ struct BrowserPane: View {
                 .padding(12)
             }
         case .list:
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(flatRows) { row in
-                        FileRow(
-                            file: row.file,
-                            depth: row.depth,
-                            isExpanded: expandedFolders.contains(row.file.id),
-                            isSelected: selection == row.file.id,
-                            isActivePane: isFocused,
-                            isRenaming: renamingFileID == row.file.id,
-                            renameDraft: $renameDraft,
-                            destinations: destinations,
-                            select: {
-                                onFocus()
-                                select(row.file)
-                            },
-                            nameClick: {
-                                onFocus()
-                                handleNameClick(row.file)
-                            },
-                            commitRename: { commitRename(row.file) },
-                            cancelRename: { cancelRename() },
-                            open: {
-                                onFocus()
-                                open(row.file)
-                            },
-                            toggleExpansion: {
-                                onFocus()
-                                toggleExpansion(row.file)
-                            },
-                            copy: { copyPath(row.file.url.path) },
-                            reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
-                            trash: {
-                                store.moveToTrash(row.file.url)
-                                reload()
-                            },
-                            copyTo: { destination in
-                                store.copy(row.file.url, to: destination)
-                                reload()
-                            },
-                            moveTo: { destination in
-                                store.move(row.file.url, to: destination)
-                                reload()
-                            }
-                        )
+            GeometryReader { proxy in
+                let nameWidth = nameColumnWidth(for: proxy.size.width)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(flatRows) { row in
+                            FileRow(
+                                file: row.file,
+                                depth: row.depth,
+                                isExpanded: expandedFolders.contains(row.file.id),
+                                isSelected: selection == row.file.id,
+                                isActivePane: isFocused,
+                                isRenaming: renamingFileID == row.file.id,
+                                nameColumnWidth: nameWidth,
+                                renameDraft: $renameDraft,
+                                destinations: destinations,
+                                select: {
+                                    onFocus()
+                                    select(row.file)
+                                },
+                                nameClick: {
+                                    onFocus()
+                                    handleNameClick(row.file)
+                                },
+                                commitRename: { commitRename(row.file) },
+                                cancelRename: { cancelRename() },
+                                open: {
+                                    onFocus()
+                                    open(row.file)
+                                },
+                                toggleExpansion: {
+                                    onFocus()
+                                    toggleExpansion(row.file)
+                                },
+                                copy: { copyPath(row.file.url.path) },
+                                reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
+                                trash: {
+                                    store.moveToTrash(row.file.url)
+                                    reload()
+                                },
+                                copyTo: { destination in
+                                    store.copy(row.file.url, to: destination)
+                                    reload()
+                                },
+                                moveTo: { destination in
+                                    store.move(row.file.url, to: destination)
+                                    reload()
+                                }
+                            )
+                            .frame(width: proxy.size.width, alignment: .leading)
+                            .clipped()
+                        }
                     }
+                    .frame(width: proxy.size.width, alignment: .leading)
                 }
             }
         case .columns:
@@ -302,34 +310,44 @@ struct BrowserPane: View {
     }
 
     private var tableHeader: some View {
-        HStack(spacing: 0) {
-            Text("Name")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            SortHeaderButton(
-                title: "Modified",
-                key: .modified,
-                currentKey: sortKey,
-                isAscending: sortAscending,
-                action: { setSort(.modified) }
-            )
-                .frame(width: 150, alignment: .leading)
-            Text("Size")
-                .frame(width: 96, alignment: .trailing)
-                .padding(.trailing, 18)
-            SortHeaderButton(
-                title: "Kind",
-                key: .kind,
-                currentKey: sortKey,
-                isAscending: sortAscending,
-                action: { setSort(.kind) }
-            )
-                .frame(width: 136, alignment: .leading)
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                Text("Name")
+                    .frame(width: nameColumnWidth(for: proxy.size.width), alignment: .leading)
+                SortHeaderButton(
+                    title: "Modified",
+                    key: .modified,
+                    currentKey: sortKey,
+                    isAscending: sortAscending,
+                    action: { setSort(.modified) }
+                )
+                    .frame(width: 150, alignment: .leading)
+                Text("Size")
+                    .frame(width: 96, alignment: .trailing)
+                    .padding(.trailing, 18)
+                SortHeaderButton(
+                    title: "Kind",
+                    key: .kind,
+                    currentKey: sortKey,
+                    isAscending: sortAscending,
+                    action: { setSort(.kind) }
+                )
+                    .frame(width: 136, alignment: .leading)
+            }
+            .frame(width: proxy.size.width, alignment: .leading)
+            .clipped()
         }
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
         .frame(height: 32)
         .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    private func nameColumnWidth(for paneWidth: CGFloat) -> CGFloat {
+        let horizontalPadding: CGFloat = 28
+        let fixedColumns: CGFloat = 150 + 96 + 18 + 136
+        return max(80, paneWidth - horizontalPadding - fixedColumns)
     }
 
     private var crumbs: [PathCrumb] {
