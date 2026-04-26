@@ -87,12 +87,16 @@ extension View {
 }
 
 private final class DraggableWindowView: NSView {
-    override func mouseDown(with event: NSEvent) {
+    override var mouseDownCanMoveWindow: Bool {
+        true
+    }
+
+    override func mouseUp(with event: NSEvent) {
         if event.clickCount == 2 {
             WindowZoomController.toggle(window: window)
-            return
+        } else {
+            super.mouseUp(with: event)
         }
-        window?.performDrag(with: event)
     }
 }
 

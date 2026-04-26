@@ -702,7 +702,6 @@ private struct ResizableHeaderCell<Content: View>: View {
     @Binding var width: CGFloat
     @ViewBuilder let content: () -> Content
     @State private var dragStartWidth: CGFloat?
-    @State private var isHoveringHandle = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -710,11 +709,10 @@ private struct ResizableHeaderCell<Content: View>: View {
                 .padding(.trailing, 6)
 
             Rectangle()
-                .fill(isHoveringHandle ? Color.accentColor.opacity(0.75) : Color(nsColor: .separatorColor))
-                .frame(width: isHoveringHandle ? 2 : 1)
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 1)
                 .frame(width: 9, height: 22)
                 .contentShape(Rectangle())
-                .onHover { isHoveringHandle = $0 }
                 .hoverCursor(.resizeLeftRight)
                 .gesture(
                     DragGesture(minimumDistance: 0)
