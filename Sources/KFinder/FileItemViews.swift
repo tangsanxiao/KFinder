@@ -1,17 +1,5 @@
 import SwiftUI
 
-struct FileListColumnWidths: Equatable {
-    var name: CGFloat = 300
-    var modified: CGFloat = 150
-    var size: CGFloat = 114
-    var kind: CGFloat = 150
-
-    static let minimumName: CGFloat = 140
-    static let minimumModified: CGFloat = 110
-    static let minimumSize: CGFloat = 70
-    static let minimumKind: CGFloat = 90
-}
-
 struct FileRow: View {
     let file: BrowserFileItem
     let depth: Int
@@ -19,7 +7,6 @@ struct FileRow: View {
     let isSelected: Bool
     let isActivePane: Bool
     let isRenaming: Bool
-    let columnWidths: FileListColumnWidths
     @Binding var renameDraft: String
     let destinations: [PaneDestination]
     let select: () -> Void
@@ -57,22 +44,22 @@ struct FileRow: View {
 
                 nameContent
             }
-            .frame(width: columnWidths.name, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, CGFloat(depth) * 18)
 
             Text(DisplayFormatters.date(file.modificationDate))
                 .foregroundStyle(secondaryTextColor)
-                .frame(width: columnWidths.modified, alignment: .leading)
+                .frame(width: 150, alignment: .leading)
 
             Text(DisplayFormatters.size(file.size))
                 .foregroundStyle(secondaryTextColor)
-                .frame(width: columnWidths.size, alignment: .trailing)
+                .frame(width: 96, alignment: .trailing)
                 .padding(.trailing, 18)
 
             Text(file.typeDescription)
                 .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
-                .frame(width: columnWidths.kind, alignment: .leading)
+                .frame(width: 136, alignment: .leading)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 14)
