@@ -357,32 +357,11 @@ struct BrowserPane: View {
     }
 
     private func resolvedColumnWidths(for paneWidth: CGFloat) -> FileListColumnWidths {
-        let contentWidth = max(
-            FileListColumnWidths.minName + FileListColumnWidths.minModified + FileListColumnWidths.minSize + FileListColumnWidths.minKind,
-            paneWidth - 28
-        )
-
         var widths = columnWidths
         widths.name = max(FileListColumnWidths.minName, widths.name)
         widths.modified = max(FileListColumnWidths.minModified, widths.modified)
         widths.size = max(FileListColumnWidths.minSize, widths.size)
-
-        let reserved = widths.name + widths.modified + widths.size
-        if reserved + FileListColumnWidths.minKind > contentWidth {
-            var overflow = reserved + FileListColumnWidths.minKind - contentWidth
-            let sizeReduction = min(overflow, widths.size - FileListColumnWidths.minSize)
-            widths.size -= sizeReduction
-            overflow -= sizeReduction
-
-            let modifiedReduction = min(overflow, widths.modified - FileListColumnWidths.minModified)
-            widths.modified -= modifiedReduction
-            overflow -= modifiedReduction
-
-            let nameReduction = min(overflow, widths.name - FileListColumnWidths.minName)
-            widths.name -= nameReduction
-        }
-
-        widths.kind = max(FileListColumnWidths.minKind, contentWidth - widths.name - widths.modified - widths.size)
+        widths.kind = max(FileListColumnWidths.minKind, widths.kind)
         return widths
     }
 
@@ -396,20 +375,20 @@ struct BrowserPane: View {
 
             switch boundary {
             case .nameModified:
-                let total = start.name + start.modified
-                updated.name = min(max(FileListColumnWidths.minName, start.name + delta), total - FileListColumnWidths.minModified)
-                updated.modified = total - updated.name
+                updated.name = max(FileListColumnWidths.minName, start.name + delta)
+                updated.modified = start.modified
                 updated.size = start.size
+                updated.kind = start.kind
             case .modifiedSize:
-                let total = start.modified + start.size
                 updated.name = start.name
-                updated.modified = min(max(FileListColumnWidths.minModified, start.modified + delta), total - FileListColumnWidths.minSize)
-                updated.size = total - updated.modified
+                updated.modified = max(FileListColumnWidths.minModified, start.modified + delta)
+                updated.size = start.size
+                updated.kind = start.kind
             case .sizeKind:
-                let total = start.size + start.kind
                 updated.name = start.name
                 updated.modified = start.modified
-                updated.size = min(max(FileListColumnWidths.minSize, start.size + delta), total - FileListColumnWidths.minKind)
+                updated.size = max(FileListColumnWidths.minSize, start.size + delta)
+                updated.kind = start.kind
             }
 
             columnWidths = updated
