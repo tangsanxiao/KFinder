@@ -369,7 +369,7 @@ struct BrowserPane: View {
 
         let total = widths.name + widths.modified + widths.size + widths.kind
         if total < contentWidth {
-            widths.name += contentWidth - total
+            widths.kind += contentWidth - total
         } else if total > contentWidth {
             shrinkColumns(&widths, by: total - contentWidth)
         }
@@ -388,10 +388,10 @@ struct BrowserPane: View {
             remaining -= reduction
         }
 
-        reduce(\.name, minimum: FileListColumnWidths.minName)
         reduce(\.kind, minimum: FileListColumnWidths.minKind)
-        reduce(\.modified, minimum: FileListColumnWidths.minModified)
         reduce(\.size, minimum: FileListColumnWidths.minSize)
+        reduce(\.modified, minimum: FileListColumnWidths.minModified)
+        reduce(\.name, minimum: FileListColumnWidths.minName)
     }
 
     private func resizeColumn(_ boundary: ColumnResizeBoundary, phase: ResizePhase, delta: CGFloat, paneWidth: CGFloat) {
