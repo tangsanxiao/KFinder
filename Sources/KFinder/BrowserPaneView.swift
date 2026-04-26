@@ -19,6 +19,8 @@ struct BrowserPane: View {
     @State private var renameDraft = ""
     @State private var sortKey: BrowserSortKey = .name
     @State private var sortAscending = true
+    @State private var columnWidths = FileListColumnWidths()
+    @State private var resizeStartWidths: FileListColumnWidths?
     @State private var errorMessage: String?
     @State private var toolbarTooltip: String?
 
@@ -114,7 +116,7 @@ struct BrowserPane: View {
             }
         case .list:
             GeometryReader { proxy in
-                let nameWidth = nameColumnWidth(for: proxy.size.width)
+                let widths = resolvedColumnWidths(for: proxy.size.width)
 
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -126,7 +128,7 @@ struct BrowserPane: View {
                                 isSelected: selection == row.file.id,
                                 isActivePane: isFocused,
                                 isRenaming: renamingFileID == row.file.id,
-                                nameColumnWidth: nameWidth,
+                                columnWidths: widths,
                                 renameDraft: $renameDraft,
                                 destinations: destinations,
                                 select: {
@@ -311,28 +313,38 @@ struct BrowserPane: View {
 
     private var tableHeader: some View {
         GeometryReader { proxy in
+            let widths = resolvedColumnWidths(for: proxy.size.width)
+
             HStack(spacing: 0) {
-                Text("Name")
-                    .frame(width: nameColumnWidth(for: proxy.size.width), alignment: .leading)
-                SortHeaderButton(
-                    title: "Modified",
-                    key: .modified,
-                    currentKey: sortKey,
-                    isAscending: sortAscending,
-                    action: { setSort(.modified) }
-                )
-                    .frame(width: 150, alignment: .leading)
-                Text("Size")
-                    .frame(width: 96, alignment: .trailing)
-                    .padding(.trailing, 18)
-                SortHeaderButton(
-                    title: "Kind",
-                    key: .kind,
-                    currentKey: sortKey,
-                    isAscending: sortAscending,
-                    action: { setSort(.kind) }
-                )
-                    .frame(width: 136, alignment: .leading)
+                ResizableHeaderCell(width: widths.name, onResize: { phase, delta in
+                    resizeColumn(.nameModified, phase: phase, delta: delta, paneWidth: proxy.size.width)
+                }) {
+                    Text("Name")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                ResizableHeaderCell(width: widths.modified, onResize: { phase, delta in
+                    resizeColumn(.modifiedSize, phase: phase, delta: delta, paneWidth: proxy.size.width)
+                }) {
+                    SortHeaderButton(
+                        title: "Modified",
+                        key: .modified,
+                        currentKey: sortKey,
+                        isAscending: sortAscending,
+                        action: { setSort(.modified) }
+                    )
+                }
+
+                ResizableHeaderCell(width: widths.size, onResize: { phase, delta in
+                    resizeColumn(.sizeKind, phase: phase, delta: delta, paneWidth: proxy.size.width)
+                }) {
+                    Text("Size")
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.trailing, 18)
+                }
+
+                Text("Kind")
+                    .frame(width: widths.kind, alignment: .leading)
             }
             .frame(width: proxy.size.width, alignment: .leading)
             .clipped()
@@ -344,10 +356,66 @@ struct BrowserPane: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private func nameColumnWidth(for paneWidth: CGFloat) -> CGFloat {
-        let horizontalPadding: CGFloat = 28
-        let fixedColumns: CGFloat = 150 + 96 + 18 + 136
-        return max(80, paneWidth - horizontalPadding - fixedColumns)
+    private func resolvedColumnWidths(for paneWidth: CGFloat) -> FileListColumnWidths {
+        let contentWidth = max(
+            FileListColumnWidths.minName + FileListColumnWidths.minModified + FileListColumnWidths.minSize + FileListColumnWidths.minKind,
+            paneWidth - 28
+        )
+
+        var widths = columnWidths
+        widths.name = max(FileListColumnWidths.minName, widths.name)
+        widths.modified = max(FileListColumnWidths.minModified, widths.modified)
+        widths.size = max(FileListColumnWidths.minSize, widths.size)
+
+        let reserved = widths.name + widths.modified + widths.size
+        if reserved + FileListColumnWidths.minKind > contentWidth {
+            var overflow = reserved + FileListColumnWidths.minKind - contentWidth
+            let sizeReduction = min(overflow, widths.size - FileListColumnWidths.minSize)
+            widths.size -= sizeReduction
+            overflow -= sizeReduction
+
+            let modifiedReduction = min(overflow, widths.modified - FileListColumnWidths.minModified)
+            widths.modified -= modifiedReduction
+            overflow -= modifiedReduction
+
+            let nameReduction = min(overflow, widths.name - FileListColumnWidths.minName)
+            widths.name -= nameReduction
+        }
+
+        widths.kind = max(FileListColumnWidths.minKind, contentWidth - widths.name - widths.modified - widths.size)
+        return widths
+    }
+
+    private func resizeColumn(_ boundary: ColumnResizeBoundary, phase: ResizePhase, delta: CGFloat, paneWidth: CGFloat) {
+        switch phase {
+        case .began:
+            resizeStartWidths = resolvedColumnWidths(for: paneWidth)
+        case .changed:
+            guard let start = resizeStartWidths else { return }
+            var updated = columnWidths
+
+            switch boundary {
+            case .nameModified:
+                let total = start.name + start.modified
+                updated.name = min(max(FileListColumnWidths.minName, start.name + delta), total - FileListColumnWidths.minModified)
+                updated.modified = total - updated.name
+                updated.size = start.size
+            case .modifiedSize:
+                let total = start.modified + start.size
+                updated.name = start.name
+                updated.modified = min(max(FileListColumnWidths.minModified, start.modified + delta), total - FileListColumnWidths.minSize)
+                updated.size = total - updated.modified
+            case .sizeKind:
+                let total = start.size + start.kind
+                updated.name = start.name
+                updated.modified = start.modified
+                updated.size = min(max(FileListColumnWidths.minSize, start.size + delta), total - FileListColumnWidths.minKind)
+            }
+
+            columnWidths = updated
+        case .ended:
+            resizeStartWidths = nil
+        }
     }
 
     private var crumbs: [PathCrumb] {
@@ -687,6 +755,52 @@ private struct SortHeaderButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(currentKey == key ? .primary : .secondary)
         .help("Sort by \(title)")
+    }
+}
+
+private enum ColumnResizeBoundary {
+    case nameModified
+    case modifiedSize
+    case sizeKind
+}
+
+private enum ResizePhase {
+    case began
+    case changed
+    case ended
+}
+
+private struct ResizableHeaderCell<Content: View>: View {
+    let width: CGFloat
+    let onResize: (ResizePhase, CGFloat) -> Void
+    @ViewBuilder let content: () -> Content
+    @State private var didBeginDrag = false
+
+    var body: some View {
+        content()
+            .frame(width: width, alignment: .leading)
+            .overlay(alignment: .trailing) {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor))
+                    .frame(width: 1, height: 22)
+                    .frame(width: 10, height: 28)
+                    .contentShape(Rectangle())
+                    .hoverCursor(.resizeLeftRight)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if !didBeginDrag {
+                                    didBeginDrag = true
+                                    onResize(.began, 0)
+                                }
+                                onResize(.changed, value.translation.width)
+                            }
+                            .onEnded { _ in
+                                didBeginDrag = false
+                                onResize(.ended, 0)
+                            }
+                    )
+            }
     }
 }
 

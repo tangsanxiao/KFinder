@@ -17,6 +17,10 @@ struct WorkspaceDetailView: View {
                 )
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
+                    .background {
+                        Color(nsColor: .windowBackgroundColor)
+                        WindowDragArea()
+                    }
 
                 Divider()
 
@@ -68,10 +72,7 @@ private struct FinderLikeToolbar: View {
         }
         .padding(.leading, isSidebarVisible ? 0 : 66)
         .frame(height: 44)
-        .background {
-            Color(nsColor: .windowBackgroundColor)
-            WindowDragArea()
-        }
+        .background(Color(nsColor: .windowBackgroundColor))
         .onTapGesture(count: 2) {
             WindowZoomController.toggle()
         }
