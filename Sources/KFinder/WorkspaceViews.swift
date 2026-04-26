@@ -68,9 +68,9 @@ private struct FinderLikeToolbar: View {
         }
         .padding(.leading, isSidebarVisible ? 0 : 66)
         .frame(height: 44)
-        .background(Color(nsColor: .windowBackgroundColor))
-        .onTapGesture(count: 2) {
-            WindowZoomController.toggle()
+        .background {
+            Color(nsColor: .windowBackgroundColor)
+            WindowDragArea()
         }
     }
 

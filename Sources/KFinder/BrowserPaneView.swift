@@ -17,6 +17,8 @@ struct BrowserPane: View {
     @State private var selection: BrowserFileItem.ID?
     @State private var renamingFileID: BrowserFileItem.ID?
     @State private var renameDraft = ""
+    @State private var sortKey: BrowserSortKey = .name
+    @State private var sortAscending = true
     @State private var errorMessage: String?
     @State private var toolbarTooltip: String?
 
@@ -80,7 +82,7 @@ struct BrowserPane: View {
         case .icons:
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 12) {
-                    ForEach(items) { file in
+                    ForEach(sortedItems) { file in
                         IconFileCell(
                             file: file,
                             isSelected: selection == file.id,
@@ -167,7 +169,7 @@ struct BrowserPane: View {
     private var columnContent: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
-                columnList(items, width: 240)
+                columnList(sortedItems, width: 240)
 
                 if let selectedFolderChildren {
                     Divider()
@@ -303,11 +305,23 @@ struct BrowserPane: View {
         HStack(spacing: 0) {
             Text("Name")
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("Modified")
+            SortHeaderButton(
+                title: "Modified",
+                key: .modified,
+                currentKey: sortKey,
+                isAscending: sortAscending,
+                action: { setSort(.modified) }
+            )
                 .frame(width: 150, alignment: .leading)
             Text("Size")
                 .frame(width: 90, alignment: .trailing)
-            Text("Kind")
+            SortHeaderButton(
+                title: "Kind",
+                key: .kind,
+                currentKey: sortKey,
+                isAscending: sortAscending,
+                action: { setSort(.kind) }
+            )
                 .frame(width: 120, alignment: .leading)
         }
         .font(.system(size: 12, weight: .semibold))
@@ -341,10 +355,14 @@ struct BrowserPane: View {
         store.paneDestinations(excluding: root.id)
     }
 
+    private var sortedItems: [BrowserFileItem] {
+        sorted(items)
+    }
+
     private var selectedFolderChildren: [BrowserFileItem]? {
         guard let selected = items.first(where: { $0.id == selection }),
               selected.canBrowseInline else { return nil }
-        return expandedContents[selected.id]
+        return expandedContents[selected.id].map(sorted)
     }
 
     private func columnList(_ source: [BrowserFileItem], width: CGFloat) -> some View {
@@ -421,16 +439,59 @@ struct BrowserPane: View {
     }
 
     private var flatRows: [FileTreeRow] {
-        flatten(items, depth: 0)
+        flatten(sortedItems, depth: 0)
     }
 
     private func flatten(_ source: [BrowserFileItem], depth: Int) -> [FileTreeRow] {
         source.flatMap { file -> [FileTreeRow] in
             var rows = [FileTreeRow(file: file, depth: depth)]
             if expandedFolders.contains(file.id), let children = expandedContents[file.id] {
-                rows.append(contentsOf: flatten(children, depth: depth + 1))
+                rows.append(contentsOf: flatten(sorted(children), depth: depth + 1))
             }
             return rows
+        }
+    }
+
+    private func setSort(_ key: BrowserSortKey) {
+        if sortKey == key {
+            sortAscending.toggle()
+        } else {
+            sortKey = key
+            sortAscending = key.defaultAscending
+        }
+    }
+
+    private func sorted(_ source: [BrowserFileItem]) -> [BrowserFileItem] {
+        source.sorted { lhs, rhs in
+            let order: ComparisonResult
+            switch sortKey {
+            case .name:
+                order = lhs.name.localizedStandardCompare(rhs.name)
+            case .modified:
+                order = compareDates(lhs.modificationDate, rhs.modificationDate)
+            case .kind:
+                let kindOrder = lhs.typeDescription.localizedStandardCompare(rhs.typeDescription)
+                order = kindOrder == .orderedSame ? lhs.name.localizedStandardCompare(rhs.name) : kindOrder
+            }
+
+            if order == .orderedSame {
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+            return sortAscending ? order == .orderedAscending : order == .orderedDescending
+        }
+    }
+
+    private func compareDates(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?):
+            if lhs == rhs { return .orderedSame }
+            return lhs < rhs ? .orderedAscending : .orderedDescending
+        case (nil, nil):
+            return .orderedSame
+        case (nil, _?):
+            return .orderedAscending
+        case (_?, nil):
+            return .orderedDescending
         }
     }
 
@@ -568,6 +629,46 @@ private struct FileTreeRow: Identifiable {
     let depth: Int
 
     var id: String { "\(file.id)-\(depth)" }
+}
+
+private enum BrowserSortKey {
+    case name
+    case modified
+    case kind
+
+    var defaultAscending: Bool {
+        switch self {
+        case .name, .kind:
+            return true
+        case .modified:
+            return false
+        }
+    }
+}
+
+private struct SortHeaderButton: View {
+    let title: String
+    let key: BrowserSortKey
+    let currentKey: BrowserSortKey
+    let isAscending: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                if currentKey == key {
+                    Image(systemName: isAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .bold))
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(currentKey == key ? .primary : .secondary)
+        .help("Sort by \(title)")
+    }
 }
 
 private struct PaneToolbarActionButton: View {
