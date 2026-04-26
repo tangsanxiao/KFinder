@@ -19,6 +19,7 @@ struct BrowserPane: View {
     @State private var renameDraft = ""
     @State private var sortKey: BrowserSortKey = .name
     @State private var sortAscending = true
+    @State private var columnWidths = FileListColumnWidths()
     @State private var errorMessage: String?
     @State private var toolbarTooltip: String?
 
@@ -123,6 +124,7 @@ struct BrowserPane: View {
                             isSelected: selection == row.file.id,
                             isActivePane: isFocused,
                             isRenaming: renamingFileID == row.file.id,
+                            columnWidths: columnWidths,
                             renameDraft: $renameDraft,
                             destinations: destinations,
                             select: {
@@ -303,27 +305,48 @@ struct BrowserPane: View {
 
     private var tableHeader: some View {
         HStack(spacing: 0) {
-            Text("Name")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            SortHeaderButton(
+            ResizableHeaderCell(
+                minWidth: FileListColumnWidths.minimumName,
+                width: $columnWidths.name
+            ) {
+                Text("Name")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            ResizableHeaderCell(
+                minWidth: FileListColumnWidths.minimumModified,
+                width: $columnWidths.modified
+            ) {
+                SortHeaderButton(
                 title: "Modified",
                 key: .modified,
                 currentKey: sortKey,
                 isAscending: sortAscending,
                 action: { setSort(.modified) }
-            )
-                .frame(width: 150, alignment: .leading)
-            Text("Size")
-                .frame(width: 96, alignment: .trailing)
-                .padding(.trailing, 18)
-            SortHeaderButton(
+                )
+            }
+
+            ResizableHeaderCell(
+                minWidth: FileListColumnWidths.minimumSize,
+                width: $columnWidths.size
+            ) {
+                Text("Size")
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, 18)
+            }
+
+            ResizableHeaderCell(
+                minWidth: FileListColumnWidths.minimumKind,
+                width: $columnWidths.kind
+            ) {
+                SortHeaderButton(
                 title: "Kind",
                 key: .kind,
                 currentKey: sortKey,
                 isAscending: sortAscending,
                 action: { setSort(.kind) }
-            )
-                .frame(width: 136, alignment: .leading)
+                )
+            }
         }
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.secondary)
@@ -669,6 +692,41 @@ private struct SortHeaderButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(currentKey == key ? .primary : .secondary)
         .help("Sort by \(title)")
+    }
+}
+
+private struct ResizableHeaderCell<Content: View>: View {
+    let minWidth: CGFloat
+    @Binding var width: CGFloat
+    @ViewBuilder let content: () -> Content
+    @State private var dragStartWidth: CGFloat?
+    @State private var isHoveringHandle = false
+
+    var body: some View {
+        HStack(spacing: 0) {
+            content()
+                .padding(.trailing, 6)
+
+            Rectangle()
+                .fill(isHoveringHandle ? Color.accentColor.opacity(0.75) : Color(nsColor: .separatorColor))
+                .frame(width: isHoveringHandle ? 2 : 1)
+                .frame(width: 9, height: 22)
+                .contentShape(Rectangle())
+                .onHover { isHoveringHandle = $0 }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if dragStartWidth == nil {
+                                dragStartWidth = width
+                            }
+                            width = max(minWidth, (dragStartWidth ?? width) + value.translation.width)
+                        }
+                        .onEnded { _ in
+                            dragStartWidth = nil
+                        }
+                )
+        }
+        .frame(width: width, alignment: .leading)
     }
 }
 
