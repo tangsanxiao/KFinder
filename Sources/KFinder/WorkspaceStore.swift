@@ -180,14 +180,42 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func move(_ sourceURL: URL, to destination: PaneDestination) {
+        move(sourceURL, toDirectory: destination.url, destinationName: destination.name)
+    }
+
+    func move(_ sourceURL: URL, toDirectory destinationURL: URL, destinationName: String? = nil) {
         do {
-            let target = uniqueDestinationURL(for: sourceURL, in: destination.url)
+            guard sourceURL.deletingLastPathComponent().standardizedFileURL != destinationURL.standardizedFileURL else {
+                statusMessage = "\(sourceURL.lastPathComponent) is already in this folder"
+                return
+            }
+            let target = uniqueDestinationURL(for: sourceURL, in: destinationURL)
             try FileManager.default.moveItem(at: sourceURL, to: target)
             fileOperationRevision += 1
-            statusMessage = "Moved \(sourceURL.lastPathComponent) to \(destination.name)"
+            statusMessage = "Moved \(sourceURL.lastPathComponent) to \(destinationName ?? destinationURL.path)"
         } catch {
             lastError = error.localizedDescription
             statusMessage = "Move failed"
+        }
+    }
+
+    func renameFile(_ sourceURL: URL, to newName: String) {
+        let trimmedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, trimmedName != sourceURL.lastPathComponent else { return }
+
+        do {
+            let target = sourceURL.deletingLastPathComponent().appendingPathComponent(trimmedName)
+            guard !FileManager.default.fileExists(atPath: target.path) else {
+                lastError = "A file named \(trimmedName) already exists."
+                statusMessage = "Rename failed"
+                return
+            }
+            try FileManager.default.moveItem(at: sourceURL, to: target)
+            fileOperationRevision += 1
+            statusMessage = "Renamed \(sourceURL.lastPathComponent) to \(trimmedName)"
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Rename failed"
         }
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct BrowserPane: View {
     @EnvironmentObject private var store: WorkspaceStore
@@ -14,6 +15,8 @@ struct BrowserPane: View {
     @State private var expandedFolders: Set<String> = []
     @State private var expandedContents: [String: [BrowserFileItem]] = [:]
     @State private var selection: BrowserFileItem.ID?
+    @State private var renamingFileID: BrowserFileItem.ID?
+    @State private var renameDraft = ""
     @State private var errorMessage: String?
     @State private var toolbarTooltip: String?
 
@@ -53,6 +56,9 @@ struct BrowserPane: View {
                 .stroke(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
         }
         .simultaneousGesture(TapGesture().onEnded { onFocus() })
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleFileDrop(providers)
+        }
         .task(id: currentURL) {
             reload()
         }
@@ -79,10 +85,18 @@ struct BrowserPane: View {
                             file: file,
                             isSelected: selection == file.id,
                             isActivePane: isFocused,
+                            isRenaming: renamingFileID == file.id,
+                            renameDraft: $renameDraft,
                             select: {
                                 onFocus()
                                 select(file)
                             },
+                            nameClick: {
+                                onFocus()
+                                handleNameClick(file)
+                            },
+                            commitRename: { commitRename(file) },
+                            cancelRename: { cancelRename() },
                             open: {
                                 onFocus()
                                 open(file)
@@ -106,11 +120,19 @@ struct BrowserPane: View {
                             isExpanded: expandedFolders.contains(row.file.id),
                             isSelected: selection == row.file.id,
                             isActivePane: isFocused,
+                            isRenaming: renamingFileID == row.file.id,
+                            renameDraft: $renameDraft,
                             destinations: destinations,
                             select: {
                                 onFocus()
                                 select(row.file)
                             },
+                            nameClick: {
+                                onFocus()
+                                handleNameClick(row.file)
+                            },
+                            commitRename: { commitRename(row.file) },
+                            cancelRename: { cancelRename() },
                             open: {
                                 onFocus()
                                 open(row.file)
@@ -332,11 +354,19 @@ struct BrowserPane: View {
                     file: file,
                     isSelected: selection == file.id,
                     isActivePane: isFocused,
+                    isRenaming: renamingFileID == file.id,
+                    renameDraft: $renameDraft,
                     destinations: destinations,
                     select: {
                         onFocus()
                         select(file)
                     },
+                    nameClick: {
+                        onFocus()
+                        handleNameClick(file)
+                    },
+                    commitRename: { commitRename(file) },
+                    cancelRename: { cancelRename() },
                     open: {
                         onFocus()
                         open(file)
@@ -367,6 +397,7 @@ struct BrowserPane: View {
             items = try FileBrowserService.contents(of: currentURL)
             expandedFolders.removeAll()
             expandedContents.removeAll()
+            renamingFileID = nil
             errorMessage = nil
         } catch {
             items = []
@@ -420,10 +451,68 @@ struct BrowserPane: View {
 
     private func select(_ file: BrowserFileItem) {
         selection = file.id
+        if renamingFileID != file.id {
+            renamingFileID = nil
+        }
         guard viewMode == .columns, file.canBrowseInline else { return }
         if expandedContents[file.id] == nil {
             expandedContents[file.id] = try? FileBrowserService.contents(of: file.url)
         }
+    }
+
+    private func handleNameClick(_ file: BrowserFileItem) {
+        guard selection == file.id, isFocused else {
+            select(file)
+            return
+        }
+        beginRename(file)
+    }
+
+    private func beginRename(_ file: BrowserFileItem) {
+        selection = file.id
+        renameDraft = file.name
+        renamingFileID = file.id
+    }
+
+    private func commitRename(_ file: BrowserFileItem) {
+        store.renameFile(file.url, to: renameDraft)
+        renamingFileID = nil
+        reloadPreservingExpansion()
+    }
+
+    private func cancelRename() {
+        renamingFileID = nil
+        renameDraft = ""
+    }
+
+    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
+            return false
+        }
+
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            guard let sourceURL = droppedFileURL(from: item) else { return }
+            Task { @MainActor in
+                onFocus()
+                store.move(sourceURL, toDirectory: currentURL)
+                reloadPreservingExpansion()
+            }
+        }
+        return true
+    }
+
+    nonisolated private func droppedFileURL(from item: NSSecureCoding?) -> URL? {
+        if let url = item as? URL {
+            return url
+        }
+        if let data = item as? Data,
+           let value = String(data: data, encoding: .utf8) {
+            return URL(string: value)
+        }
+        if let value = item as? String {
+            return URL(string: value)
+        }
+        return nil
     }
 
     private func open(_ file: BrowserFileItem) {

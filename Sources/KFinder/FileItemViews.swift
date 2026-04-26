@@ -6,8 +6,13 @@ struct FileRow: View {
     let isExpanded: Bool
     let isSelected: Bool
     let isActivePane: Bool
+    let isRenaming: Bool
+    @Binding var renameDraft: String
     let destinations: [PaneDestination]
     let select: () -> Void
+    let nameClick: () -> Void
+    let commitRename: () -> Void
+    let cancelRename: () -> Void
     let open: () -> Void
     let toggleExpansion: () -> Void
     let copy: () -> Void
@@ -15,6 +20,7 @@ struct FileRow: View {
     let trash: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
+    @FocusState private var isRenameFieldFocused: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -37,10 +43,7 @@ struct FileRow: View {
                     .foregroundStyle(iconColor)
                     .frame(width: 20)
 
-                Text(file.name)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(primaryTextColor)
+                nameContent
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, CGFloat(depth) * 18)
@@ -65,6 +68,16 @@ struct FileRow: View {
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
+        .onDrag {
+            NSItemProvider(object: file.url as NSURL)
+        }
+        .onChange(of: isRenaming) { newValue in
+            if newValue {
+                DispatchQueue.main.async {
+                    isRenameFieldFocused = true
+                }
+            }
+        }
         .contextMenu {
             Button(file.canBrowseInline ? "Enter Folder" : "Open") { open() }
             Button("Reveal in Finder") { reveal() }
@@ -84,6 +97,39 @@ struct FileRow: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var nameContent: some View {
+        if isRenaming {
+            TextField("Name", text: $renameDraft)
+                .textFieldStyle(.plain)
+                .focused($isRenameFieldFocused)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.accentColor, lineWidth: 1)
+                )
+                .onSubmit(commitRename)
+                .onExitCommand(perform: cancelRename)
+                .onChange(of: isRenameFieldFocused) { isFocused in
+                    if !isFocused, isRenaming {
+                        commitRename()
+                    }
+                }
+        } else {
+            Text(file.name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(primaryTextColor)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: nameClick)
         }
     }
 
@@ -112,9 +158,15 @@ struct IconFileCell: View {
     let file: BrowserFileItem
     let isSelected: Bool
     let isActivePane: Bool
+    let isRenaming: Bool
+    @Binding var renameDraft: String
     let select: () -> Void
+    let nameClick: () -> Void
+    let commitRename: () -> Void
+    let cancelRename: () -> Void
     let open: () -> Void
     let trash: () -> Void
+    @FocusState private var isRenameFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 6) {
@@ -122,12 +174,7 @@ struct IconFileCell: View {
                 .font(.system(size: 32))
                 .foregroundStyle(iconColor)
 
-            Text(file.name)
-                .font(.system(size: 12))
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(height: 34)
-                .foregroundStyle(textColor)
+            iconNameContent
         }
         .frame(width: 88, height: 86)
         .background(
@@ -137,9 +184,56 @@ struct IconFileCell: View {
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
+        .onDrag {
+            NSItemProvider(object: file.url as NSURL)
+        }
+        .onChange(of: isRenaming) { newValue in
+            if newValue {
+                DispatchQueue.main.async {
+                    isRenameFieldFocused = true
+                }
+            }
+        }
         .contextMenu {
             Button("Open") { open() }
             Button("Move to Trash", role: .destructive) { trash() }
+        }
+    }
+
+    @ViewBuilder
+    private var iconNameContent: some View {
+        if isRenaming {
+            TextField("Name", text: $renameDraft)
+                .font(.system(size: 12))
+                .textFieldStyle(.plain)
+                .focused($isRenameFieldFocused)
+                .multilineTextAlignment(.center)
+                .frame(height: 34)
+                .padding(.horizontal, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.accentColor, lineWidth: 1)
+                )
+                .onSubmit(commitRename)
+                .onExitCommand(perform: cancelRename)
+                .onChange(of: isRenameFieldFocused) { isFocused in
+                    if !isFocused, isRenaming {
+                        commitRename()
+                    }
+                }
+        } else {
+            Text(file.name)
+                .font(.system(size: 12))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .frame(height: 34)
+                .foregroundStyle(textColor)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: nameClick)
         }
     }
 
@@ -164,14 +258,20 @@ struct ColumnFileRow: View {
     let file: BrowserFileItem
     let isSelected: Bool
     let isActivePane: Bool
+    let isRenaming: Bool
+    @Binding var renameDraft: String
     let destinations: [PaneDestination]
     let select: () -> Void
+    let nameClick: () -> Void
+    let commitRename: () -> Void
+    let cancelRename: () -> Void
     let open: () -> Void
     let copy: () -> Void
     let reveal: () -> Void
     let trash: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
+    @FocusState private var isRenameFieldFocused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -179,10 +279,7 @@ struct ColumnFileRow: View {
                 .foregroundStyle(iconColor)
                 .frame(width: 20)
 
-            Text(file.name)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(textColor)
+            columnNameContent
 
             Spacer(minLength: 8)
 
@@ -199,6 +296,16 @@ struct ColumnFileRow: View {
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
+        .onDrag {
+            NSItemProvider(object: file.url as NSURL)
+        }
+        .onChange(of: isRenaming) { newValue in
+            if newValue {
+                DispatchQueue.main.async {
+                    isRenameFieldFocused = true
+                }
+            }
+        }
         .contextMenu {
             Button(file.canBrowseInline ? "Enter Folder" : "Open") { open() }
             Button("Reveal in Finder") { reveal() }
@@ -218,6 +325,39 @@ struct ColumnFileRow: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var columnNameContent: some View {
+        if isRenaming {
+            TextField("Name", text: $renameDraft)
+                .textFieldStyle(.plain)
+                .focused($isRenameFieldFocused)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.accentColor, lineWidth: 1)
+                )
+                .onSubmit(commitRename)
+                .onExitCommand(perform: cancelRename)
+                .onChange(of: isRenameFieldFocused) { isFocused in
+                    if !isFocused, isRenaming {
+                        commitRename()
+                    }
+                }
+        } else {
+            Text(file.name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(textColor)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: nameClick)
         }
     }
 
