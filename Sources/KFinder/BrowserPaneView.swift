@@ -115,7 +115,7 @@ struct BrowserPane: View {
             }
         case .list:
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(flatRows) { row in
                         FileRow(
                             file: row.file,
@@ -162,6 +162,7 @@ struct BrowserPane: View {
                         )
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .columns:
             columnContent
@@ -351,6 +352,7 @@ struct BrowserPane: View {
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 32)
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -713,6 +715,7 @@ private struct ResizableHeaderCell<Content: View>: View {
                 .frame(width: 9, height: 22)
                 .contentShape(Rectangle())
                 .onHover { isHoveringHandle = $0 }
+                .hoverCursor(.resizeLeftRight)
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
