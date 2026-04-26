@@ -56,36 +56,6 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-struct CursorOnHover: ViewModifier {
-    let cursor: NSCursor
-    @State private var isCursorPushed = false
-
-    func body(content: Content) -> some View {
-        content
-            .onHover { isHovering in
-                if isHovering, !isCursorPushed {
-                    cursor.push()
-                    isCursorPushed = true
-                } else if !isHovering, isCursorPushed {
-                    NSCursor.pop()
-                    isCursorPushed = false
-                }
-            }
-            .onDisappear {
-                if isCursorPushed {
-                    NSCursor.pop()
-                    isCursorPushed = false
-                }
-            }
-    }
-}
-
-extension View {
-    func hoverCursor(_ cursor: NSCursor) -> some View {
-        modifier(CursorOnHover(cursor: cursor))
-    }
-}
-
 private final class DraggableWindowView: NSView {
     override func mouseDown(with event: NSEvent) {
         if event.clickCount == 2 {

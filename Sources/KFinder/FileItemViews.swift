@@ -76,7 +76,6 @@ struct FileRow: View {
         }
         .font(.system(size: 13))
         .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: 30)
         .background(Rectangle().fill(selectionColor))
         .contentShape(Rectangle())
