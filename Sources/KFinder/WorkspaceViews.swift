@@ -72,6 +72,9 @@ private struct FinderLikeToolbar: View {
             Color(nsColor: .windowBackgroundColor)
             WindowDragArea()
         }
+        .onTapGesture(count: 2) {
+            WindowZoomController.toggle()
+        }
     }
 
     private var viewMode: Binding<BrowserViewMode> {

@@ -26,17 +26,16 @@ struct FileRow: View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
                 if file.canBrowseInline {
-                    Button {
-                        toggleExpansion()
-                    } label: {
-                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 14, height: 20)
-                    }
-                    .buttonStyle(.plain)
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 24)
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(TapGesture().onEnded {
+                            toggleExpansion()
+                        })
                 } else {
-                    Color.clear.frame(width: 14)
+                    Color.clear.frame(width: 22)
                 }
 
                 Image(systemName: file.iconName)
@@ -54,12 +53,13 @@ struct FileRow: View {
 
             Text(DisplayFormatters.size(file.size))
                 .foregroundStyle(secondaryTextColor)
-                .frame(width: 90, alignment: .trailing)
+                .frame(width: 96, alignment: .trailing)
+                .padding(.trailing, 18)
 
             Text(file.typeDescription)
                 .foregroundStyle(secondaryTextColor)
                 .lineLimit(1)
-                .frame(width: 120, alignment: .leading)
+                .frame(width: 136, alignment: .leading)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 14)

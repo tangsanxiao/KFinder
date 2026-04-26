@@ -314,7 +314,8 @@ struct BrowserPane: View {
             )
                 .frame(width: 150, alignment: .leading)
             Text("Size")
-                .frame(width: 90, alignment: .trailing)
+                .frame(width: 96, alignment: .trailing)
+                .padding(.trailing, 18)
             SortHeaderButton(
                 title: "Kind",
                 key: .kind,
@@ -322,7 +323,7 @@ struct BrowserPane: View {
                 isAscending: sortAscending,
                 action: { setSort(.kind) }
             )
-                .frame(width: 120, alignment: .leading)
+                .frame(width: 136, alignment: .leading)
         }
         .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.secondary)
