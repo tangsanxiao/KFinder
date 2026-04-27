@@ -9,6 +9,19 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
+
+VERSION="${KFINDER_VERSION:-}"
+if [[ -z "$VERSION" ]]; then
+    VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//')"
+fi
+if [[ -z "$VERSION" ]]; then
+    VERSION="$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')"
+fi
+if [[ -z "$VERSION" ]]; then
+    VERSION="0.1.0-dev"
+fi
+BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+
 swift build -c release
 
 rm -rf "$APP_DIR"
@@ -18,7 +31,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp ".build/release/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$ROOT_DIR/Assets/KFinder.icns" "$RESOURCES_DIR/KFinder.icns"
 
-cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
+cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -38,9 +51,9 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
+    <string>$VERSION</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>NSAppleEventsUsageDescription</key>

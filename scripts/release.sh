@@ -8,7 +8,17 @@ OUT_DIR="$ROOT_DIR/release"
 
 cd "$ROOT_DIR"
 
-"$ROOT_DIR/scripts/build-app.sh"
+VERSION="${KFINDER_VERSION:-${GITHUB_REF_NAME:-}}"
+VERSION="${VERSION#v}"
+if [[ -z "$VERSION" ]]; then
+    VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//')"
+fi
+
+if [[ -n "$VERSION" ]]; then
+    KFINDER_VERSION="$VERSION" "$ROOT_DIR/scripts/build-app.sh"
+else
+    "$ROOT_DIR/scripts/build-app.sh"
+fi
 
 codesign --force --deep --sign - "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
