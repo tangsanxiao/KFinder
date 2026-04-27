@@ -37,6 +37,4 @@
     <path d="M772 720L884 832" stroke="url(#lens)" stroke-width="46" stroke-linecap="round"/>
     <path d="M772 720L884 832" stroke="white" stroke-width="18" stroke-linecap="round" opacity="0.94"/>
   </g>
-
-  <rect x="27" y="27" width="970" height="970" rx="195" stroke="white" stroke-opacity="0.20" stroke-width="6"/>
 </svg>
