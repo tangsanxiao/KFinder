@@ -147,7 +147,7 @@ struct FileRow: View {
     }
 
     private var selectionColor: Color {
-        guard isSelected else { return Color(nsColor: .controlBackgroundColor) }
+        guard isSelected else { return .clear }
         return isActivePane ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
     }
 

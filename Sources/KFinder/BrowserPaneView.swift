@@ -117,58 +117,64 @@ struct BrowserPane: View {
         case .list:
             GeometryReader { proxy in
                 let widths = resolvedColumnWidths(for: proxy.size.width)
+                let rows = flatRows
 
                 ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(flatRows) { row in
-                            FileRow(
-                                file: row.file,
-                                depth: row.depth,
-                                isExpanded: expandedFolders.contains(row.file.id),
-                                isSelected: selection == row.file.id,
-                                isActivePane: isFocused,
-                                isRenaming: renamingFileID == row.file.id,
-                                columnWidths: widths,
-                                renameDraft: $renameDraft,
-                                destinations: destinations,
-                                select: {
-                                    onFocus()
-                                    select(row.file)
-                                },
-                                nameClick: {
-                                    onFocus()
-                                    handleNameClick(row.file)
-                                },
-                                commitRename: { commitRename(row.file) },
-                                cancelRename: { cancelRename() },
-                                open: {
-                                    onFocus()
-                                    open(row.file)
-                                },
-                                toggleExpansion: {
-                                    onFocus()
-                                    toggleExpansion(row.file)
-                                },
-                                copy: { copyPath(row.file.url.path) },
-                                reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
-                                trash: {
-                                    store.moveToTrash(row.file.url)
-                                    reload()
-                                },
-                                copyTo: { destination in
-                                    store.copy(row.file.url, to: destination)
-                                    reload()
-                                },
-                                moveTo: { destination in
-                                    store.move(row.file.url, to: destination)
-                                    reload()
-                                }
-                            )
-                            .frame(width: proxy.size.width, alignment: .leading)
-                            .clipped()
+                    ZStack(alignment: .topLeading) {
+                        ListStripeBackground(rowCount: max(rows.count, Int(ceil(proxy.size.height / 30))))
+                            .frame(width: proxy.size.width, height: max(proxy.size.height, CGFloat(rows.count) * 30))
+
+                        LazyVStack(spacing: 0) {
+                            ForEach(rows) { row in
+                                FileRow(
+                                    file: row.file,
+                                    depth: row.depth,
+                                    isExpanded: expandedFolders.contains(row.file.id),
+                                    isSelected: selection == row.file.id,
+                                    isActivePane: isFocused,
+                                    isRenaming: renamingFileID == row.file.id,
+                                    columnWidths: widths,
+                                    renameDraft: $renameDraft,
+                                    destinations: destinations,
+                                    select: {
+                                        onFocus()
+                                        select(row.file)
+                                    },
+                                    nameClick: {
+                                        onFocus()
+                                        handleNameClick(row.file)
+                                    },
+                                    commitRename: { commitRename(row.file) },
+                                    cancelRename: { cancelRename() },
+                                    open: {
+                                        onFocus()
+                                        open(row.file)
+                                    },
+                                    toggleExpansion: {
+                                        onFocus()
+                                        toggleExpansion(row.file)
+                                    },
+                                    copy: { copyPath(row.file.url.path) },
+                                    reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
+                                    trash: {
+                                        store.moveToTrash(row.file.url)
+                                        reload()
+                                    },
+                                    copyTo: { destination in
+                                        store.copy(row.file.url, to: destination)
+                                        reload()
+                                    },
+                                    moveTo: { destination in
+                                        store.move(row.file.url, to: destination)
+                                        reload()
+                                    }
+                                )
+                                .frame(width: proxy.size.width, alignment: .leading)
+                                .clipped()
+                            }
                         }
+                        .frame(width: proxy.size.width, alignment: .leading)
                     }
-                    .frame(width: proxy.size.width, alignment: .leading)
                 }
             }
         case .columns:
@@ -319,8 +325,13 @@ struct BrowserPane: View {
                 ResizableHeaderCell(width: widths.name, onResize: { phase, delta in
                     resizeColumn(.nameModified, phase: phase, delta: delta, paneWidth: proxy.size.width)
                 }) {
-                    Text("Name")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SortHeaderButton(
+                        title: "Name",
+                        key: .name,
+                        currentKey: sortKey,
+                        isAscending: sortAscending,
+                        action: { setSort(.name) }
+                    )
                 }
 
                 ResizableHeaderCell(width: widths.modified, onResize: { phase, delta in
@@ -344,9 +355,9 @@ struct BrowserPane: View {
                 }
 
                 Text("Kind")
-                    .frame(width: widths.kind, alignment: .leading)
+                    .frame(width: widths.kind, height: 32, alignment: .leading)
             }
-            .frame(width: proxy.size.width, alignment: .leading)
+            .frame(width: proxy.size.width, height: 32, alignment: .leading)
             .clipped()
         }
         .font(.system(size: 12, weight: .semibold))
@@ -758,11 +769,28 @@ private struct SortHeaderButton: View {
                 }
                 Spacer(minLength: 0)
             }
+            .frame(maxHeight: .infinity, alignment: .center)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(currentKey == key ? .primary : .secondary)
         .help("Sort by \(title)")
+    }
+}
+
+private struct ListStripeBackground: View {
+    let rowCount: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<max(rowCount, 1), id: \.self) { index in
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(index.isMultiple(of: 2) ? Color(nsColor: .controlBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.18))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .frame(height: 30)
+            }
+        }
     }
 }
 
@@ -786,12 +814,12 @@ private struct ResizableHeaderCell<Content: View>: View {
 
     var body: some View {
         content()
-            .frame(width: width, alignment: .leading)
+            .frame(width: width, height: 32, alignment: .center)
             .overlay(alignment: .trailing) {
                 Rectangle()
                     .fill(Color(nsColor: .separatorColor))
-                    .frame(width: 1, height: 22)
-                    .frame(width: 10, height: 28)
+                    .frame(width: 1, height: 32)
+                    .frame(width: 10, height: 32)
                     .contentShape(Rectangle())
                     .hoverCursor(.resizeLeftRight)
                     .gesture(
