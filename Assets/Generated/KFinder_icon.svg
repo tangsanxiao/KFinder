@@ -21,9 +21,9 @@
     </filter>
   </defs>
 
-  <rect x="24" y="24" width="976" height="976" rx="198" fill="url(#bg)"/>
-  <path d="M38 656C265 612 475 566 690 470C810 416 904 358 1000 274V826C1000 922 922 1000 826 1000H198C102 1000 24 922 24 826V662C29 660 34 658 38 656Z" fill="#6E32FF" opacity="0.16"/>
-  <path d="M24 648C194 632 380 606 586 542C768 486 898 398 1000 326V826C1000 922 922 1000 826 1000H198C102 1000 24 922 24 826V648Z" fill="#1F5DFF" opacity="0.14"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <path d="M18 656C250 612 468 566 690 470C820 414 920 350 1024 258V826C1024 935 935 1024 826 1024H198C89 1024 0 935 0 826V662C6 660 12 658 18 656Z" fill="#6E32FF" opacity="0.16"/>
+  <path d="M0 648C180 632 374 606 586 542C778 484 914 390 1024 308V826C1024 935 935 1024 826 1024H198C89 1024 0 935 0 826V648Z" fill="#1F5DFF" opacity="0.14"/>
   <path d="M94 114C244 58 614 66 928 146C780 240 300 270 94 114Z" fill="white" opacity="0.12"/>
 
   <g filter="url(#softShadow)">
@@ -35,6 +35,5 @@
     <circle cx="704" cy="652" r="96" stroke="url(#lens)" stroke-width="46"/>
     <circle cx="704" cy="652" r="48" fill="white" opacity="0.92"/>
     <path d="M772 720L884 832" stroke="url(#lens)" stroke-width="46" stroke-linecap="round"/>
-    <path d="M772 720L884 832" stroke="white" stroke-width="18" stroke-linecap="round" opacity="0.94"/>
   </g>
 </svg>
