@@ -1,24 +1,42 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="160" y1="120" x2="860" y2="900" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#62BEFF"/>
-      <stop offset="1" stop-color="#6A66FF"/>
+    <linearGradient id="bg" x1="118" y1="92" x2="898" y2="922" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34C4F6"/>
+      <stop offset="0.48" stop-color="#3477FF"/>
+      <stop offset="1" stop-color="#8D25F6"/>
     </linearGradient>
-    <filter id="shadow" x="40" y="40" width="944" height="944" filterUnits="userSpaceOnUse">
-      <feDropShadow dx="0" dy="28" stdDeviation="34" flood-color="#000000" flood-opacity="0.22"/>
+    <linearGradient id="lens" x1="640" y1="540" x2="885" y2="825" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#395BFF"/>
+      <stop offset="1" stop-color="#8E34F6"/>
+    </linearGradient>
+    <linearGradient id="folderShade" x1="302" y1="322" x2="720" y2="704" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F2FF"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#22115D" flood-opacity="0.26"/>
+    </filter>
+    <filter id="smallShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#29166F" flood-opacity="0.30"/>
     </filter>
   </defs>
-  <rect x="112" y="96" width="800" height="800" rx="210" fill="url(#bg)" filter="url(#shadow)"/>
-  <path d="M185 145C300 100 590 108 825 170C720 245 356 268 185 145Z" fill="white" opacity="0.20"/>
-  
-  <path d="M230 370C230 326 266 290 310 290H430C454 290 476 301 491 320L530 370H715C759 370 795 406 795 450V665C795 709 759 745 715 745H310C266 745 230 709 230 665V370Z" fill="white" fill-opacity="0.92"/>
-  <rect x="280" y="455" width="465" height="50" rx="25" fill="#23395C" fill-opacity="0.17"/>
-  <rect x="280" y="545" width="340" height="45" rx="22.5" fill="#23395C" fill-opacity="0.12"/>
-  <circle cx="687.5" cy="587.5" r="72.5" stroke="#606EFF" stroke-width="38"/>
-  <path d="M735 635L800 700" stroke="#606EFF" stroke-width="38" stroke-linecap="round"/>
-  <circle cx="340" cy="635" r="16" fill="#34476C" fill-opacity="0.50"/>
-  <circle cx="410" cy="635" r="16" fill="#34476C" fill-opacity="0.50"/>
-  <circle cx="480" cy="635" r="16" fill="#34476C" fill-opacity="0.50"/>
 
-  <rect x="115" y="99" width="794" height="794" rx="207" stroke="white" stroke-opacity="0.28" stroke-width="6"/>
+  <rect x="24" y="24" width="976" height="976" rx="198" fill="url(#bg)"/>
+  <path d="M38 656C265 612 475 566 690 470C810 416 904 358 1000 274V826C1000 922 922 1000 826 1000H198C102 1000 24 922 24 826V662C29 660 34 658 38 656Z" fill="#6E32FF" opacity="0.16"/>
+  <path d="M24 648C194 632 380 606 586 542C768 486 898 398 1000 326V826C1000 922 922 1000 826 1000H198C102 1000 24 922 24 826V648Z" fill="#1F5DFF" opacity="0.14"/>
+  <path d="M94 114C244 58 614 66 928 146C780 240 300 270 94 114Z" fill="white" opacity="0.12"/>
+
+  <g filter="url(#softShadow)">
+    <path d="M188 337C188 283 232 239 286 239H408C436 239 462 251 480 272L540 343C556 362 579 373 604 373H790C844 373 888 417 888 471V708C888 762 844 806 790 806H286C232 806 188 762 188 708V337Z" fill="url(#folderShade)"/>
+    <path d="M188 445C188 391 232 347 286 347H778C832 347 876 391 876 445V708C876 762 832 806 778 806H286C232 806 188 762 188 708V445Z" fill="white"/>
+  </g>
+
+  <g filter="url(#smallShadow)">
+    <circle cx="704" cy="652" r="96" stroke="url(#lens)" stroke-width="46"/>
+    <circle cx="704" cy="652" r="48" fill="white" opacity="0.92"/>
+    <path d="M772 720L884 832" stroke="url(#lens)" stroke-width="46" stroke-linecap="round"/>
+    <path d="M772 720L884 832" stroke="white" stroke-width="18" stroke-linecap="round" opacity="0.94"/>
+  </g>
+
+  <rect x="27" y="27" width="970" height="970" rx="195" stroke="white" stroke-opacity="0.20" stroke-width="6"/>
 </svg>
