@@ -234,8 +234,8 @@ KFinder 目前是一个基本可用的个人工具，也已经具备上传 GitHu
 
 ## License
 
-No license has been selected yet. Add a `LICENSE` file before publishing if you want others to use, modify, or redistribute the project under clear terms.
+KFinder is released under the MIT License. See `LICENSE` for details.
 
 ## 许可证
 
-目前尚未选择许可证。如果希望他人可以明确地使用、修改或再分发本项目，建议在公开发布前添加 `LICENSE` 文件。
+KFinder 使用 MIT License 发布，详情见 `LICENSE` 文件。
