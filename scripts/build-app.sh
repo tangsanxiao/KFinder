@@ -58,6 +58,16 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <string>13.0</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>KFinder controls Finder to import open Finder windows as panes for your workspaces.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>KFinder needs access to your Desktop to list and manage files in panes that open it.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>KFinder needs access to your Documents to list and manage files in panes that open it.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>KFinder needs access to your Downloads to list and manage files in panes that open it.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>KFinder needs access to removable volumes to browse files stored on them.</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>KFinder needs access to network volumes to browse files stored on them.</string>
 </dict>
 </plist>
 PLIST

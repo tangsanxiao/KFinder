@@ -20,6 +20,7 @@ struct WorkspaceDetailView: View {
                     .background {
                         Color(nsColor: .windowBackgroundColor)
                         WindowDragArea()
+                            .frame(height: 44)
                     }
 
                 Divider()
@@ -177,37 +178,30 @@ private struct MultiPaneBrowserView: View {
                 description: "Add folders as panes or import the Finder windows you already have open."
             )
         } else {
-            GeometryReader { proxy in
-                let directories = visibleDirectories
-                let frames = paneFrames(count: directories.count, layout: workspace.layout, size: proxy.size)
-
-                ZStack(alignment: .topLeading) {
-                    ForEach(Array(directories.enumerated()), id: \.element.id) { index, item in
-                        BrowserPane(
-                            root: item,
-                            isFocused: focusedDirectoryID == item.id,
-                            viewMode: paneViewModes[item.id, default: .list],
-                            onFocus: { focusedDirectoryID = item.id }
-                        )
-                        .frame(width: frames[index].width, height: frames[index].height)
-                        .position(x: frames[index].midX, y: frames[index].midY)
-                        .onTapGesture {
-                            focusedDirectoryID = item.id
-                        }
-                    }
-                }
+            paneLayout
                 .background(Color(nsColor: .windowBackgroundColor))
                 .onAppear {
-                    if focusedDirectoryID == nil || !directories.contains(where: { $0.id == focusedDirectoryID }) {
-                        focusedDirectoryID = directories.first?.id
-                    }
+                    keepFocusedPaneVisible()
                 }
-                .onChange(of: workspace.directories) { directories in
-                    if focusedDirectoryID == nil || !directories.contains(where: { $0.id == focusedDirectoryID }) {
-                        focusedDirectoryID = directories.first?.id
-                    }
+                .onChange(of: workspace.directories) { _ in
+                    keepFocusedPaneVisible()
                 }
-            }
+        }
+    }
+
+    @ViewBuilder
+    private var paneLayout: some View {
+        let directories = visibleDirectories
+
+        switch workspace.layout {
+        case .columns2:
+            gridPaneLayout(directories, columns: min(max(directories.count, 1), 2))
+        case .columns3:
+            gridPaneLayout(directories, columns: min(max(directories.count, 1), 3))
+        case .grid:
+            gridPaneLayout(directories, columns: directories.count <= 1 ? 1 : 2)
+        case .mainAndStack:
+            mainAndStackPaneLayout(directories)
         }
     }
 
@@ -215,50 +209,68 @@ private struct MultiPaneBrowserView: View {
         Array(workspace.directories.prefix(6))
     }
 
-    private func paneFrames(count: Int, layout: WorkspaceLayout, size: CGSize) -> [CGRect] {
-        let gap: CGFloat = 1
-        let frame = CGRect(origin: .zero, size: size)
-
-        switch layout {
-        case .columns2:
-            return gridFrames(count: count, columns: min(max(count, 1), 2), in: frame, gap: gap)
-        case .columns3:
-            return gridFrames(count: count, columns: min(max(count, 1), 3), in: frame, gap: gap)
-        case .grid:
-            return gridFrames(count: count, columns: count <= 1 ? 1 : 2, in: frame, gap: gap)
-        case .mainAndStack:
-            return mainAndStackFrames(count: count, in: frame, gap: gap)
+    private func keepFocusedPaneVisible() {
+        let directories = visibleDirectories
+        if focusedDirectoryID == nil || !directories.contains(where: { $0.id == focusedDirectoryID }) {
+            focusedDirectoryID = directories.first?.id
         }
     }
 
-    private func gridFrames(count: Int, columns: Int, in frame: CGRect, gap: CGFloat) -> [CGRect] {
-        let rows = Int(ceil(Double(count) / Double(columns)))
-        let width = (frame.width - CGFloat(columns - 1) * gap) / CGFloat(columns)
-        let height = (frame.height - CGFloat(rows - 1) * gap) / CGFloat(rows)
-
-        return (0..<count).map { index in
-            let row = index / columns
-            let column = index % columns
-            return CGRect(
-                x: CGFloat(column) * (width + gap),
-                y: CGFloat(row) * (height + gap),
-                width: width,
-                height: height
-            )
+    private func paneView(for item: DirectoryItem) -> some View {
+        BrowserPane(
+            root: item,
+            isFocused: focusedDirectoryID == item.id,
+            viewMode: paneViewModes[item.id, default: .list],
+            onFocus: { focusedDirectoryID = item.id }
+        )
+        .onTapGesture {
+            focusedDirectoryID = item.id
         }
     }
 
-    private func mainAndStackFrames(count: Int, in frame: CGRect, gap: CGFloat) -> [CGRect] {
-        guard count > 1 else { return [frame] }
-        let mainWidth = frame.width * 0.58
-        let sideWidth = frame.width - mainWidth - gap
-        let sideCount = count - 1
-        let sideHeight = (frame.height - CGFloat(sideCount - 1) * gap) / CGFloat(sideCount)
+    private func gridPaneLayout(_ directories: [DirectoryItem], columns: Int) -> some View {
+        let rows = chunked(directories, size: columns)
 
-        let main = CGRect(x: 0, y: 0, width: mainWidth, height: frame.height)
-        let side = (0..<sideCount).map { index in
-            CGRect(x: mainWidth + gap, y: CGFloat(index) * (sideHeight + gap), width: sideWidth, height: sideHeight)
+        return VStack(spacing: 1) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 1) {
+                    ForEach(row) { item in
+                        paneView(for: item)
+                    }
+
+                    if row.count < columns {
+                        ForEach(0..<(columns - row.count), id: \.self) { _ in
+                            Color.clear
+                        }
+                    }
+                }
+            }
         }
-        return [main] + side
+    }
+
+    private func mainAndStackPaneLayout(_ directories: [DirectoryItem]) -> some View {
+        HStack(spacing: 1) {
+            if let first = directories.first {
+                paneView(for: first)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .layoutPriority(1)
+            }
+
+            let sideItems = Array(directories.dropFirst())
+            if !sideItems.isEmpty {
+                VStack(spacing: 1) {
+                    ForEach(sideItems) { item in
+                        paneView(for: item)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func chunked(_ items: [DirectoryItem], size: Int) -> [[DirectoryItem]] {
+        stride(from: 0, to: items.count, by: max(size, 1)).map { start in
+            Array(items[start..<min(start + max(size, 1), items.count)])
+        }
     }
 }

@@ -9,9 +9,11 @@ final class WorkspaceStore: ObservableObject {
     @Published var lastError: String?
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
+    @Published private var recentPaths: [String] = []
 
     private let persistenceURL: URL
     private let finderController = FinderController()
+    private let recentsDefaultsKey = "com.kfinder.recentFolders"
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -24,6 +26,7 @@ final class WorkspaceStore: ObservableObject {
            FileManager.default.fileExists(atPath: legacyPersistenceURL.path) {
             try? FileManager.default.copyItem(at: legacyPersistenceURL, to: persistenceURL)
         }
+        recentPaths = UserDefaults.standard.stringArray(forKey: recentsDefaultsKey) ?? []
         load()
     }
 
@@ -56,10 +59,32 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func createWorkspace() {
-        let workspace = Workspace(name: nextWorkspaceName())
+        appendWorkspace(directories: defaultDirectoriesForNewWorkspace())
+    }
+
+    private func appendWorkspace(directories: [DirectoryItem]) {
+        let workspace = Workspace(name: nextWorkspaceName(), directories: directories)
         workspaces.append(workspace)
         selectedWorkspaceID = workspace.id
         save()
+    }
+
+    /// A brand-new workspace opens the folders you used most recently instead of
+    /// being empty; on a fresh install with no history it falls back to Home,
+    /// which lists without tripping macOS's per-folder privacy prompt.
+    private func defaultDirectoriesForNewWorkspace() -> [DirectoryItem] {
+        let recents = recentPaths
+            .filter { FileManager.default.fileExists(atPath: $0) }
+            .prefix(2)
+
+        if recents.isEmpty {
+            let home = FileManager.default.homeDirectoryForCurrentUser
+            return [DirectoryItem(name: home.lastPathComponent, path: home.path)]
+        }
+
+        return recents.map { path in
+            DirectoryItem(name: URL(fileURLWithPath: path).lastPathComponent, path: path)
+        }
     }
 
     func deleteSelectedWorkspace() {
@@ -123,7 +148,10 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func updatePaneLocation(id: UUID, url: URL) {
-        paneLocations[id] = url.path
+        let path = url.path
+        guard paneLocations[id] != path else { return }
+        paneLocations[id] = path
+        recordRecent(path)
     }
 
     func paneLocation(for id: UUID?) -> URL? {
@@ -219,6 +247,21 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    @discardableResult
+    func createFolder(in directory: URL, named name: String = "新建文件夹") -> URL? {
+        let target = uniqueDestinationURL(for: directory.appendingPathComponent(name), in: directory)
+        do {
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+            fileOperationRevision += 1
+            statusMessage = "Created \(target.lastPathComponent)"
+            return target
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "New folder failed"
+            return nil
+        }
+    }
+
     func moveToTrash(_ sourceURL: URL) {
         do {
             var resultingURL: NSURL?
@@ -244,8 +287,15 @@ final class WorkspaceStore: ObservableObject {
 
     private func ensureWorkspaceExists() {
         if selectedWorkspace == nil {
-            createWorkspace()
+            appendWorkspace(directories: [])
         }
+    }
+
+    private func recordRecent(_ path: String) {
+        let updated = RecentFolders.updated(recentPaths, adding: path)
+        guard updated != recentPaths else { return }
+        recentPaths = updated
+        UserDefaults.standard.set(recentPaths, forKey: recentsDefaultsKey)
     }
 
     private func load() {

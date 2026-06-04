@@ -14,6 +14,11 @@ let package = Package(
         .executableTarget(
             name: "KFinder",
             path: "Sources/KFinder"
+        ),
+        .testTarget(
+            name: "KFinderTests",
+            dependencies: ["KFinder"],
+            path: "Tests/KFinderTests"
         )
     ]
 )

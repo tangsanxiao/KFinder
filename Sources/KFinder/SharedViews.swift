@@ -24,27 +24,42 @@ struct EmptyStateView: View {
 }
 
 struct WindowChromeConfigurator: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         DispatchQueue.main.async {
-            configure(window: view.window)
+            configureIfNeeded(window: view.window, coordinator: context.coordinator)
         }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            configure(window: nsView.window)
+        guard let window = nsView.window else {
+            DispatchQueue.main.async {
+                configureIfNeeded(window: nsView.window, coordinator: context.coordinator)
+            }
+            return
         }
+        configureIfNeeded(window: window, coordinator: context.coordinator)
     }
 
-    private func configure(window: NSWindow?) {
+    private func configureIfNeeded(window: NSWindow?, coordinator: Coordinator) {
         guard let window else { return }
+        guard coordinator.configuredWindow !== window else { return }
+
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.styleMask.insert(.fullSizeContentView)
         window.isMovableByWindowBackground = false
         window.toolbar = nil
+        coordinator.configuredWindow = window
+    }
+
+    final class Coordinator {
+        weak var configuredWindow: NSWindow?
     }
 }
 

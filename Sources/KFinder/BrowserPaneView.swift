@@ -17,6 +17,7 @@ struct BrowserPane: View {
     @State private var selection: BrowserFileItem.ID?
     @State private var renamingFileID: BrowserFileItem.ID?
     @State private var renameDraft = ""
+    @State private var pendingRenameTask: Task<Void, Never>?
     @State private var sortKey: BrowserSortKey = .name
     @State private var sortAscending = true
     @State private var columnWidths = FileListColumnWidths()
@@ -51,6 +52,8 @@ struct BrowserPane: View {
                 fileContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .clipped()
+                    .contentShape(Rectangle())
+                    .contextMenu { emptyAreaMenu }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
@@ -119,67 +122,108 @@ struct BrowserPane: View {
                 let widths = resolvedColumnWidths(for: proxy.size.width)
                 let rows = flatRows
 
-                ScrollView {
-                    ZStack(alignment: .topLeading) {
-                        ListStripeBackground(rowCount: max(rows.count, Int(ceil(proxy.size.height / 30))))
-                            .frame(width: proxy.size.width, height: max(proxy.size.height, CGFloat(rows.count) * 30))
+                let usedHeight = CGFloat(rows.count) * FileRowMetrics.height
+                let fillerHeight = max(0, proxy.size.height - usedHeight)
 
-                        LazyVStack(spacing: 0) {
-                            ForEach(rows) { row in
-                                FileRow(
-                                    file: row.file,
-                                    depth: row.depth,
-                                    isExpanded: expandedFolders.contains(row.file.id),
-                                    isSelected: selection == row.file.id,
-                                    isActivePane: isFocused,
-                                    isRenaming: renamingFileID == row.file.id,
-                                    columnWidths: widths,
-                                    renameDraft: $renameDraft,
-                                    destinations: destinations,
-                                    select: {
-                                        onFocus()
-                                        select(row.file)
-                                    },
-                                    nameClick: {
-                                        onFocus()
-                                        handleNameClick(row.file)
-                                    },
-                                    commitRename: { commitRename(row.file) },
-                                    cancelRename: { cancelRename() },
-                                    open: {
-                                        onFocus()
-                                        open(row.file)
-                                    },
-                                    toggleExpansion: {
-                                        onFocus()
-                                        toggleExpansion(row.file)
-                                    },
-                                    copy: { copyPath(row.file.url.path) },
-                                    reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
-                                    trash: {
-                                        store.moveToTrash(row.file.url)
-                                        reload()
-                                    },
-                                    copyTo: { destination in
-                                        store.copy(row.file.url, to: destination)
-                                        reload()
-                                    },
-                                    moveTo: { destination in
-                                        store.move(row.file.url, to: destination)
-                                        reload()
-                                    }
-                                )
-                                .frame(width: proxy.size.width, alignment: .leading)
-                                .clipped()
-                            }
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                            FileRow(
+                                file: row.file,
+                                depth: row.depth,
+                                isExpanded: expandedFolders.contains(row.file.id),
+                                isSelected: selection == row.file.id,
+                                isActivePane: isFocused,
+                                isAlternate: !index.isMultiple(of: 2),
+                                isRenaming: renamingFileID == row.file.id,
+                                columnWidths: widths,
+                                renameDraft: $renameDraft,
+                                destinations: destinations,
+                                select: {
+                                    onFocus()
+                                    select(row.file)
+                                },
+                                nameClick: {
+                                    onFocus()
+                                    handleNameClick(row.file)
+                                },
+                                commitRename: { commitRename(row.file) },
+                                cancelRename: { cancelRename() },
+                                open: {
+                                    onFocus()
+                                    open(row.file)
+                                },
+                                toggleExpansion: {
+                                    onFocus()
+                                    toggleExpansion(row.file)
+                                },
+                                copy: { copyPath(row.file.url.path) },
+                                reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
+                                trash: {
+                                    store.moveToTrash(row.file.url)
+                                    reload()
+                                },
+                                copyTo: { destination in
+                                    store.copy(row.file.url, to: destination)
+                                    reload()
+                                },
+                                moveTo: { destination in
+                                    store.move(row.file.url, to: destination)
+                                    reload()
+                                }
+                            )
+                            .frame(width: proxy.size.width, alignment: .leading)
+                            .clipped()
                         }
-                        .frame(width: proxy.size.width, alignment: .leading)
+
+                        // Continue the alternating bands into the empty space
+                        // below the last file so the list looks like Finder's.
+                        // Bounded to the viewport height, so it stays cheap even
+                        // for huge folders (where there is no filler at all).
+                        if fillerHeight > 0 {
+                            ListStripeFiller(startIndex: rows.count)
+                                .frame(width: proxy.size.width, height: fillerHeight)
+                        }
                     }
+                    .frame(width: proxy.size.width, alignment: .leading)
                 }
+                .background(Color(nsColor: .controlBackgroundColor))
             }
         case .columns:
             columnContent
         }
+    }
+
+    @ViewBuilder
+    private var emptyAreaMenu: some View {
+        Button {
+            createFolder()
+        } label: {
+            Label("New Folder", systemImage: "folder.badge.plus")
+        }
+
+        Button {
+            onFocus()
+            NSWorkspace.shared.activateFileViewerSelecting([currentURL])
+        } label: {
+            Label("Reveal in Finder", systemImage: "arrow.up.forward.app")
+        }
+
+        Button {
+            onFocus()
+            copyPath(currentURL.path)
+        } label: {
+            Label("Copy Path", systemImage: "doc.on.doc")
+        }
+    }
+
+    private func createFolder() {
+        onFocus()
+        guard let url = store.createFolder(in: currentURL) else { return }
+        reloadPreservingExpansion()
+        guard let item = items.first(where: { $0.url == url }) else { return }
+        select(item)
+        beginRename(item)
     }
 
     private var columnContent: some View {
@@ -521,6 +565,7 @@ struct BrowserPane: View {
             items = try FileBrowserService.contents(of: currentURL)
             expandedFolders.removeAll()
             expandedContents.removeAll()
+            cancelPendingRename()
             renamingFileID = nil
             errorMessage = nil
         } catch {
@@ -617,6 +662,9 @@ struct BrowserPane: View {
     }
 
     private func select(_ file: BrowserFileItem) {
+        if selection != file.id {
+            cancelPendingRename()
+        }
         selection = file.id
         if renamingFileID != file.id {
             renamingFileID = nil
@@ -632,7 +680,24 @@ struct BrowserPane: View {
             select(file)
             return
         }
-        beginRename(file)
+        scheduleRename(file)
+    }
+
+    private func scheduleRename(_ file: BrowserFileItem) {
+        cancelPendingRename()
+        pendingRenameTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(520))
+            guard !Task.isCancelled,
+                  selection == file.id,
+                  isFocused,
+                  renamingFileID == nil else { return }
+            beginRename(file)
+        }
+    }
+
+    private func cancelPendingRename() {
+        pendingRenameTask?.cancel()
+        pendingRenameTask = nil
     }
 
     private func beginRename(_ file: BrowserFileItem) {
@@ -642,12 +707,14 @@ struct BrowserPane: View {
     }
 
     private func commitRename(_ file: BrowserFileItem) {
+        cancelPendingRename()
         store.renameFile(file.url, to: renameDraft)
         renamingFileID = nil
         reloadPreservingExpansion()
     }
 
     private func cancelRename() {
+        cancelPendingRename()
         renamingFileID = nil
         renameDraft = ""
     }
@@ -683,6 +750,7 @@ struct BrowserPane: View {
     }
 
     private func open(_ file: BrowserFileItem) {
+        cancelPendingRename()
         if file.canBrowseInline {
             navigate(to: file.url)
         } else {
@@ -693,6 +761,7 @@ struct BrowserPane: View {
     private func navigate(to url: URL) {
         onFocus()
         guard url != currentURL else { return }
+        cancelPendingRename()
         backStack.append(currentURL)
         forwardStack.removeAll()
         currentURL = url
@@ -778,19 +847,28 @@ private struct SortHeaderButton: View {
     }
 }
 
-private struct ListStripeBackground: View {
-    let rowCount: Int
+/// Paints the alternating-row tint for the blank region beneath the last file,
+/// continuing the parity from `startIndex`. Sized by its caller to at most the
+/// viewport height, so the drawing stays bounded regardless of folder size.
+private struct ListStripeFiller: View {
+    let startIndex: Int
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForEach(0..<max(rowCount, 1), id: \.self) { index in
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(index.isMultiple(of: 2) ? Color(nsColor: .controlBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.18))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .frame(height: 30)
+        Canvas { context, size in
+            let rowHeight = FileRowMetrics.height
+            let color = FileRowMetrics.alternateRowColor
+            var band = 0
+            var y: CGFloat = 0
+            while y < size.height {
+                if !(startIndex + band).isMultiple(of: 2) {
+                    let rect = CGRect(x: 0, y: y, width: size.width, height: min(rowHeight, size.height - y))
+                    context.fill(Path(rect), with: .color(color))
+                }
+                band += 1
+                y = CGFloat(band) * rowHeight
             }
         }
+        .allowsHitTesting(false)
     }
 }
 

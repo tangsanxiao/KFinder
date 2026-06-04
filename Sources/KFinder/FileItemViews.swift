@@ -1,4 +1,39 @@
+import AppKit
 import SwiftUI
+
+/// Shared geometry for list rows so the alternating stripe background, the
+/// selection highlight, and the row height all stay in lockstep.
+enum FileRowMetrics {
+    static let height: CGFloat = 21
+    /// The selection fill spans the whole row — same rect as one stripe band — so
+    /// it covers the alternating tint exactly, like Finder. A soft radius keeps
+    /// the edges rounded without leaving the band peeking out.
+    static let selectionCornerRadius: CGFloat = 9
+
+    /// Finder's own subtle alternating-row tint, so light/dark mode and
+    /// accessibility settings stay consistent with the rest of the system.
+    static var alternateRowColor: Color {
+        let colors = NSColor.alternatingContentBackgroundColors
+        return Color(nsColor: colors.count > 1 ? colors[1] : .controlBackgroundColor)
+    }
+}
+
+/// Renders the exact icon Finder shows for a file or folder (custom folder
+/// icons, app icons, document-type icons, QuickLook thumbnails the system has
+/// cached) by asking the system for it. Full-colour, so it stays itself when the
+/// row is selected. LazyVStack only builds visible rows, and NSWorkspace caches
+/// its icons, so this stays cheap while scrolling.
+struct FileIconView: View {
+    let url: URL
+    let size: CGFloat
+
+    var body: some View {
+        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+            .resizable()
+            .interpolation(.high)
+            .frame(width: size, height: size)
+    }
+}
 
 struct FileListColumnWidths: Equatable {
     var name: CGFloat = 260
@@ -18,6 +53,7 @@ struct FileRow: View {
     let isExpanded: Bool
     let isSelected: Bool
     let isActivePane: Bool
+    let isAlternate: Bool
     let isRenaming: Bool
     let columnWidths: FileListColumnWidths
     @Binding var renameDraft: String
@@ -41,8 +77,8 @@ struct FileRow: View {
                 if file.canBrowseInline {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 24)
+                        .foregroundStyle(isSelected && isActivePane ? Color.white : Color.secondary)
+                        .frame(width: 22, height: FileRowMetrics.height)
                         .contentShape(Rectangle())
                         .highPriorityGesture(TapGesture().onEnded {
                             toggleExpansion()
@@ -51,9 +87,7 @@ struct FileRow: View {
                     Color.clear.frame(width: 22)
                 }
 
-                Image(systemName: file.iconName)
-                    .foregroundStyle(iconColor)
-                    .frame(width: 20)
+                FileIconView(url: file.url, size: 16)
 
                 nameContent
             }
@@ -76,8 +110,8 @@ struct FileRow: View {
         }
         .font(.system(size: 13))
         .padding(.horizontal, 14)
-        .frame(height: 30)
-        .background(Rectangle().fill(selectionColor))
+        .frame(height: FileRowMetrics.height)
+        .background(rowBackground)
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
@@ -146,9 +180,26 @@ struct FileRow: View {
         }
     }
 
+    @ViewBuilder
+    private var rowBackground: some View {
+        ZStack {
+            if isAlternate {
+                FileRowMetrics.alternateRowColor
+            }
+            selectionBackground
+        }
+    }
+
+    @ViewBuilder
+    private var selectionBackground: some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: FileRowMetrics.selectionCornerRadius)
+                .fill(selectionColor)
+        }
+    }
+
     private var selectionColor: Color {
-        guard isSelected else { return .clear }
-        return isActivePane ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
+        isActivePane ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
     }
 
     private var primaryTextColor: Color {
@@ -159,12 +210,6 @@ struct FileRow: View {
         isSelected && isActivePane ? .white.opacity(0.86) : .secondary
     }
 
-    private var iconColor: Color {
-        if isSelected && isActivePane { return .white }
-        if file.canBrowseInline { return .blue }
-        if file.isPackage { return .primary }
-        return .secondary
-    }
 }
 
 struct IconFileCell: View {
@@ -183,9 +228,7 @@ struct IconFileCell: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            Image(systemName: file.iconName)
-                .font(.system(size: 32))
-                .foregroundStyle(iconColor)
+            FileIconView(url: file.url, size: 40)
 
             iconNameContent
         }
@@ -258,13 +301,6 @@ struct IconFileCell: View {
     private var textColor: Color {
         isSelected && isActivePane ? .white : .primary
     }
-
-    private var iconColor: Color {
-        if isSelected && isActivePane { return .white }
-        if file.canBrowseInline { return .blue }
-        if file.isPackage { return .primary }
-        return .secondary
-    }
 }
 
 struct ColumnFileRow: View {
@@ -288,9 +324,7 @@ struct ColumnFileRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: file.iconName)
-                .foregroundStyle(iconColor)
-                .frame(width: 20)
+            FileIconView(url: file.url, size: 16)
 
             columnNameContent
 
@@ -381,12 +415,5 @@ struct ColumnFileRow: View {
 
     private var textColor: Color {
         isSelected && isActivePane ? .white : .primary
-    }
-
-    private var iconColor: Color {
-        if isSelected && isActivePane { return .white }
-        if file.canBrowseInline { return .blue }
-        if file.isPackage { return .primary }
-        return .secondary
     }
 }

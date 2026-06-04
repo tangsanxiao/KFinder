@@ -63,20 +63,4 @@ extension BrowserFileItem {
     var canBrowseInline: Bool {
         isDirectory && !isPackage
     }
-
-    var iconName: String {
-        let ext = url.pathExtension.lowercased()
-        if ext == "app" { return "app.fill" }
-        if canBrowseInline { return "folder.fill" }
-        switch ext {
-        case "swift", "js", "ts", "tsx", "jsx", "py", "json", "md", "html", "css":
-            return "doc.text"
-        case "png", "jpg", "jpeg", "gif", "webp", "heic":
-            return "photo"
-        case "zip", "tar", "gz", "dmg":
-            return "archivebox"
-        default:
-            return "doc"
-        }
-    }
 }
