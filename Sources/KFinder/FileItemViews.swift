@@ -67,6 +67,7 @@ struct FileRow: View {
     let copy: () -> Void
     let reveal: () -> Void
     let trash: () -> Void
+    let compress: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
     @FocusState private var isRenameFieldFocused: Bool
@@ -130,6 +131,7 @@ struct FileRow: View {
             Button(file.canBrowseInline ? "Enter Folder" : "Open") { open() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
+            Button("Compress") { compress() }
             Button("Move to Trash", role: .destructive) { trash() }
 
             if !destinations.isEmpty {

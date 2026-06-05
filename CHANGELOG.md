@@ -5,6 +5,8 @@ All notable changes to KFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- Multi-selection in the list/icons views: Command/Option-click toggles individual files, Shift-click selects a contiguous range from the anchor.
+- Compress in the file right-click menu: zips the selected files into `<current-folder-name>.zip`, placed in the directory of the shallowest selected item. Runs `zip` asynchronously so the UI never blocks; archive name de-duplicates on collision.
 - Real Finder system icons in every view via `NSWorkspace.icon(forFile:)`; icons keep their colour when a row is selected.
 - Relative modified dates: 今天 / 昨天 / 前天 + time for recent edits.
 - Right-click an empty pane area to create a New Folder (auto-selects and enters inline rename).

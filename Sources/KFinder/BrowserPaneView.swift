@@ -14,7 +14,8 @@ struct BrowserPane: View {
     @State private var items: [BrowserFileItem] = []
     @State private var expandedFolders: Set<String> = []
     @State private var expandedContents: [String: [BrowserFileItem]] = [:]
-    @State private var selection: BrowserFileItem.ID?
+    @State private var selection: Set<BrowserFileItem.ID> = []
+    @State private var selectionAnchor: BrowserFileItem.ID?
     @State private var renamingFileID: BrowserFileItem.ID?
     @State private var renameDraft = ""
     @State private var pendingRenameTask: Task<Void, Never>?
@@ -99,13 +100,13 @@ struct BrowserPane: View {
                     ForEach(sortedItems) { file in
                         IconFileCell(
                             file: file,
-                            isSelected: selection == file.id,
+                            isSelected: selection.contains(file.id),
                             isActivePane: isFocused,
                             isRenaming: renamingFileID == file.id,
                             renameDraft: $renameDraft,
                             select: {
                                 onFocus()
-                                select(file)
+                                handleRowTap(file)
                             },
                             nameClick: {
                                 onFocus()
@@ -141,7 +142,7 @@ struct BrowserPane: View {
                                 file: row.file,
                                 depth: row.depth,
                                 isExpanded: expandedFolders.contains(row.file.id),
-                                isSelected: selection == row.file.id,
+                                isSelected: selection.contains(row.file.id),
                                 isActivePane: isFocused,
                                 isAlternate: !index.isMultiple(of: 2),
                                 isRenaming: renamingFileID == row.file.id,
@@ -150,7 +151,7 @@ struct BrowserPane: View {
                                 destinations: destinations,
                                 select: {
                                     onFocus()
-                                    select(row.file)
+                                    handleRowTap(row.file)
                                 },
                                 nameClick: {
                                     onFocus()
@@ -172,6 +173,7 @@ struct BrowserPane: View {
                                     store.moveToTrash(row.file.url)
                                     reload()
                                 },
+                                compress: { compress(row.file) },
                                 copyTo: { destination in
                                     store.copy(row.file.url, to: destination)
                                     reload()
@@ -231,7 +233,7 @@ struct BrowserPane: View {
         guard let url = store.createFolder(in: currentURL) else { return }
         reloadPreservingExpansion()
         guard let item = items.first(where: { $0.url == url }) else { return }
-        select(item)
+        selectOnly(item)
         beginRename(item)
     }
 
@@ -530,7 +532,8 @@ struct BrowserPane: View {
     }
 
     private var selectedFolderChildren: [BrowserFileItem]? {
-        guard let selected = items.first(where: { $0.id == selection }),
+        guard let selectedID = singleSelection,
+            let selected = items.first(where: { $0.id == selectedID }),
             selected.canBrowseInline
         else { return nil }
         return expandedContents[selected.id].map(sorted)
@@ -541,14 +544,14 @@ struct BrowserPane: View {
             ForEach(source) { file in
                 ColumnFileRow(
                     file: file,
-                    isSelected: selection == file.id,
+                    isSelected: selection.contains(file.id),
                     isActivePane: isFocused,
                     isRenaming: renamingFileID == file.id,
                     renameDraft: $renameDraft,
                     destinations: destinations,
                     select: {
                         onFocus()
-                        select(file)
+                        selectOnly(file)
                     },
                     nameClick: {
                         onFocus()
@@ -683,14 +686,73 @@ struct BrowserPane: View {
         }
     }
 
-    private func select(_ file: BrowserFileItem) {
-        if selection != file.id {
+    /// The single selected item, or nil when zero or multiple are selected.
+    /// Rename and column drill-down only act on a single selection.
+    private var singleSelection: BrowserFileItem.ID? {
+        selection.count == 1 ? selection.first : nil
+    }
+
+    private func clearSelection() {
+        selection = []
+        selectionAnchor = nil
+    }
+
+    /// Routes a row click through the active modifier keys: Shift extends a
+    /// contiguous range from the anchor, Command/Option toggles one item, a plain
+    /// click selects only that item.
+    private func handleRowTap(_ file: BrowserFileItem) {
+        let modifiers = NSEvent.modifierFlags
+        if modifiers.contains(.shift) {
+            extendSelection(to: file)
+        } else if modifiers.contains(.command) || modifiers.contains(.option) {
+            toggleSelection(file)
+        } else {
+            selectOnly(file)
+        }
+    }
+
+    private func selectOnly(_ file: BrowserFileItem) {
+        if selection != [file.id] {
             cancelPendingRename()
         }
-        selection = file.id
+        selection = [file.id]
+        selectionAnchor = file.id
         if renamingFileID != file.id {
             renamingFileID = nil
         }
+        prepareColumnDrillDown(file)
+    }
+
+    private func toggleSelection(_ file: BrowserFileItem) {
+        cancelPendingRename()
+        renamingFileID = nil
+        if selection.contains(file.id) {
+            selection.remove(file.id)
+        } else {
+            selection.insert(file.id)
+        }
+        selectionAnchor = file.id
+    }
+
+    private func extendSelection(to file: BrowserFileItem) {
+        cancelPendingRename()
+        renamingFileID = nil
+        let rows = flatRows
+        let anchorID = selectionAnchor ?? selection.first
+        guard let anchorID,
+            let anchorIndex = rows.firstIndex(where: { $0.file.id == anchorID }),
+            let targetIndex = rows.firstIndex(where: { $0.file.id == file.id })
+        else {
+            selection = [file.id]
+            selectionAnchor = file.id
+            return
+        }
+        let range = anchorIndex <= targetIndex ? anchorIndex...targetIndex : targetIndex...anchorIndex
+        selection = Set(rows[range].map(\.file.id))
+        // Keep the anchor so a subsequent Shift-click re-extends from the same origin.
+    }
+
+    private func prepareColumnDrillDown(_ file: BrowserFileItem) {
         guard viewMode == .columns, file.canBrowseInline else { return }
         if expandedContents[file.id] == nil {
             expandedContents[file.id] = try? FileBrowserService.contents(of: file.url)
@@ -698,8 +760,15 @@ struct BrowserPane: View {
     }
 
     private func handleNameClick(_ file: BrowserFileItem) {
-        guard selection == file.id, isFocused else {
-            select(file)
+        // When a selection modifier is held, let the row's tap gesture own the
+        // multi-select (Command toggle / Shift range). Doing selection here too
+        // would run alongside it and collapse the result back to a single item.
+        let modifiers = NSEvent.modifierFlags
+        if modifiers.contains(.command) || modifiers.contains(.option) || modifiers.contains(.shift) {
+            return
+        }
+        guard singleSelection == file.id, isFocused else {
+            selectOnly(file)
             return
         }
         scheduleRename(file)
@@ -710,7 +779,7 @@ struct BrowserPane: View {
         pendingRenameTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(520))
             guard !Task.isCancelled,
-                selection == file.id,
+                selection == [file.id],
                 isFocused,
                 renamingFileID == nil
             else { return }
@@ -724,9 +793,38 @@ struct BrowserPane: View {
     }
 
     private func beginRename(_ file: BrowserFileItem) {
-        selection = file.id
+        selection = [file.id]
+        selectionAnchor = file.id
         renameDraft = file.name
         renamingFileID = file.id
+    }
+
+    /// Files to act on for a row context-menu action: the whole selection when
+    /// the right-clicked row is part of it, otherwise just that row.
+    private func actionTargets(for file: BrowserFileItem) -> [BrowserFileItem] {
+        let ids = selection.contains(file.id) ? selection : [file.id]
+        return flatRows.map(\.file).filter { ids.contains($0.id) }
+    }
+
+    private func compress(_ file: BrowserFileItem) {
+        onFocus()
+        let targets = actionTargets(for: file)
+        guard !targets.isEmpty else { return }
+        // Output goes in the directory of the shallowest selected item; the
+        // archive is named after the pane's current directory.
+        let shallowest = targets.min { lhs, rhs in
+            lhs.url.pathComponents.count < rhs.url.pathComponents.count
+        }
+        let outputDirectory = (shallowest ?? targets[0]).url.deletingLastPathComponent()
+        let baseName = currentURL.lastPathComponent.isEmpty ? "Archive" : currentURL.lastPathComponent
+        store.compress(
+            targets.map(\.url),
+            relativeTo: currentURL,
+            archiveName: baseName,
+            into: outputDirectory
+        )
+        // The new archive appears once zip finishes; the resulting
+        // fileOperationRevision bump triggers a reload (see .onChange in body).
     }
 
     private func commitRename(_ file: BrowserFileItem) {
@@ -790,21 +888,21 @@ struct BrowserPane: View {
         backStack.append(currentURL)
         forwardStack.removeAll()
         currentURL = url
-        selection = nil
+        clearSelection()
     }
 
     private func goBack() {
         guard let previous = backStack.popLast() else { return }
         forwardStack.append(currentURL)
         currentURL = previous
-        selection = nil
+        clearSelection()
     }
 
     private func goForward() {
         guard let next = forwardStack.popLast() else { return }
         backStack.append(currentURL)
         currentURL = next
-        selection = nil
+        clearSelection()
     }
 
     private func goUp() {

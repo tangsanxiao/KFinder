@@ -290,6 +290,55 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    /// Zips `urls` into `<archiveName>.zip` placed in `outputDirectory`. Archive
+    /// entries are stored relative to `baseDirectory` (the pane's current folder)
+    /// so the zip keeps clean, nested paths. Runs `/usr/bin/zip` asynchronously so
+    /// the UI never blocks; completion updates state via `fileOperationRevision`.
+    func compress(_ urls: [URL], relativeTo baseDirectory: URL, archiveName: String, into outputDirectory: URL) {
+        guard !urls.isEmpty else { return }
+
+        let target = uniqueDestinationURL(
+            for: outputDirectory.appendingPathComponent("\(archiveName).zip"),
+            in: outputDirectory
+        )
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
+        process.currentDirectoryURL = baseDirectory
+        process.arguments = ["-r", "-X", target.path] + urls.map { relativePath(of: $0, under: baseDirectory) }
+
+        let count = urls.count
+        let finalName = target.lastPathComponent
+        process.terminationHandler = { finished in
+            let status = finished.terminationStatus
+            Task { @MainActor in
+                if status == 0 {
+                    self.fileOperationRevision += 1
+                    self.statusMessage = "Compressed \(count) item\(count == 1 ? "" : "s") to \(finalName)"
+                } else {
+                    self.lastError = "Compression failed (zip exited with code \(status))."
+                    self.statusMessage = "Compress failed"
+                }
+            }
+        }
+
+        do {
+            try process.run()
+            statusMessage = "Compressing \(count) item\(count == 1 ? "" : "s")…"
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Compress failed"
+        }
+    }
+
+    private func relativePath(of url: URL, under base: URL) -> String {
+        let basePath = base.path.hasSuffix("/") ? base.path : base.path + "/"
+        if url.path.hasPrefix(basePath) {
+            return String(url.path.dropFirst(basePath.count))
+        }
+        return url.lastPathComponent
+    }
+
     func moveToTrash(_ sourceURL: URL) {
         do {
             var resultingURL: NSURL?
