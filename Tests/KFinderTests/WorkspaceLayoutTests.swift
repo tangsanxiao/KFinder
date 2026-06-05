@@ -1,11 +1,12 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import KFinder
 
 @MainActor
 @Test func applyLayoutSwitchesWithoutAddingOrRemovingPanes() {
     let store = WorkspaceStore()
-    store.createWorkspace() // fresh workspace seeded with a single Documents pane
+    store.createWorkspace()  // fresh workspace seeded with a single Documents pane
     let count = store.selectedWorkspace?.directories.count
 
     // Layout only changes arrangement; empty grid cells become "add a pane"

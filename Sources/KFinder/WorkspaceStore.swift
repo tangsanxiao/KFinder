@@ -13,16 +13,27 @@ final class WorkspaceStore: ObservableObject {
     private let persistenceURL: URL
     private let finderController = FinderController()
 
-    init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+    /// - Parameter supportDirectory: base directory for persistence. Defaults to
+    ///   the real Application Support location; tests pass a temp directory to
+    ///   stay isolated and deterministic. Legacy migration runs only for the
+    ///   real location.
+    init(supportDirectory: URL? = nil) {
+        let support =
+            supportDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let directory = support.appendingPathComponent("KFinder", isDirectory: true)
-        let legacyDirectory = support.appendingPathComponent("FinderHub", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         persistenceURL = directory.appendingPathComponent("workspaces.json")
-        let legacyPersistenceURL = legacyDirectory.appendingPathComponent("workspaces.json")
-        if !FileManager.default.fileExists(atPath: persistenceURL.path),
-           FileManager.default.fileExists(atPath: legacyPersistenceURL.path) {
-            try? FileManager.default.copyItem(at: legacyPersistenceURL, to: persistenceURL)
+
+        if supportDirectory == nil {
+            let legacyPersistenceURL =
+                support
+                .appendingPathComponent("FinderHub", isDirectory: true)
+                .appendingPathComponent("workspaces.json")
+            if !FileManager.default.fileExists(atPath: persistenceURL.path),
+                FileManager.default.fileExists(atPath: legacyPersistenceURL.path)
+            {
+                try? FileManager.default.copyItem(at: legacyPersistenceURL, to: persistenceURL)
+            }
         }
         load()
     }
@@ -35,15 +46,25 @@ final class WorkspaceStore: ObservableObject {
     var systemBookmarks: [SystemBookmark] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         var bookmarks = [
-            SystemBookmark(id: "desktop", title: "Desktop", systemImage: "rectangle", url: home.appendingPathComponent("Desktop")),
-            SystemBookmark(id: "downloads", title: "Downloads", systemImage: "arrow.down.circle", url: home.appendingPathComponent("Downloads")),
-            SystemBookmark(id: "documents", title: "Documents", systemImage: "doc", url: home.appendingPathComponent("Documents")),
-            SystemBookmark(id: "movies", title: "Movies", systemImage: "film", url: home.appendingPathComponent("Movies")),
-            SystemBookmark(id: "music", title: "Music", systemImage: "music.note", url: home.appendingPathComponent("Music")),
-            SystemBookmark(id: "pictures", title: "Pictures", systemImage: "photo", url: home.appendingPathComponent("Pictures")),
+            SystemBookmark(
+                id: "desktop", title: "Desktop", systemImage: "rectangle", url: home.appendingPathComponent("Desktop")),
+            SystemBookmark(
+                id: "downloads", title: "Downloads", systemImage: "arrow.down.circle",
+                url: home.appendingPathComponent("Downloads")),
+            SystemBookmark(
+                id: "documents", title: "Documents", systemImage: "doc", url: home.appendingPathComponent("Documents")),
+            SystemBookmark(
+                id: "movies", title: "Movies", systemImage: "film", url: home.appendingPathComponent("Movies")),
+            SystemBookmark(
+                id: "music", title: "Music", systemImage: "music.note", url: home.appendingPathComponent("Music")),
+            SystemBookmark(
+                id: "pictures", title: "Pictures", systemImage: "photo", url: home.appendingPathComponent("Pictures")),
             SystemBookmark(id: "home", title: NSUserName(), systemImage: "house", url: home),
-            SystemBookmark(id: "applications", title: "Applications", systemImage: "app.badge", url: URL(fileURLWithPath: "/Applications")),
-            SystemBookmark(id: "trash", title: "Trash", systemImage: "trash", url: home.appendingPathComponent(".Trash"))
+            SystemBookmark(
+                id: "applications", title: "Applications", systemImage: "app.badge",
+                url: URL(fileURLWithPath: "/Applications")),
+            SystemBookmark(
+                id: "trash", title: "Trash", systemImage: "trash", url: home.appendingPathComponent(".Trash")),
         ]
 
         let iCloud = home.appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
@@ -51,7 +72,10 @@ final class WorkspaceStore: ObservableObject {
             bookmarks.append(SystemBookmark(id: "icloud", title: "iCloud Drive", systemImage: "icloud", url: iCloud))
         }
 
-        bookmarks.append(SystemBookmark(id: "macintosh-hd", title: "Macintosh HD", systemImage: "internaldrive", url: URL(fileURLWithPath: "/")))
+        bookmarks.append(
+            SystemBookmark(
+                id: "macintosh-hd", title: "Macintosh HD", systemImage: "internaldrive", url: URL(fileURLWithPath: "/"))
+        )
         return bookmarks
     }
 
@@ -131,7 +155,8 @@ final class WorkspaceStore: ObservableObject {
         guard var workspace = selectedWorkspace else { return }
 
         let existingPaths = Set(workspace.directories.map(\.path))
-        let additions = urls
+        let additions =
+            urls
             .filter { existingPaths.contains($0.path) == false }
             .map { DirectoryItem(name: $0.lastPathComponent.isEmpty ? $0.path : $0.lastPathComponent, path: $0.path) }
 
@@ -162,7 +187,10 @@ final class WorkspaceStore: ObservableObject {
     }
 
     func paneTitle(for id: UUID?) -> String {
-        guard let url = paneLocation(for: id) ?? selectedWorkspace?.directories.first.map({ URL(fileURLWithPath: $0.path) }) else {
+        guard
+            let url = paneLocation(for: id)
+                ?? selectedWorkspace?.directories.first.map({ URL(fileURLWithPath: $0.path) })
+        else {
             return selectedWorkspace?.name ?? "KFinder"
         }
         return url.lastPathComponent.isEmpty ? "Macintosh HD" : url.lastPathComponent
@@ -170,8 +198,9 @@ final class WorkspaceStore: ObservableObject {
 
     func openBookmark(_ bookmark: SystemBookmark, in focusedPaneID: UUID?) -> UUID? {
         guard let focusedPaneID,
-              var workspace = selectedWorkspace,
-              let index = workspace.directories.firstIndex(where: { $0.id == focusedPaneID }) else {
+            var workspace = selectedWorkspace,
+            let index = workspace.directories.firstIndex(where: { $0.id == focusedPaneID })
+        else {
             addDirectories([bookmark.url])
             return selectedWorkspace?.directories.last?.id
         }
@@ -297,12 +326,17 @@ final class WorkspaceStore: ObservableObject {
 
     private func load() {
         guard let data = try? Data(contentsOf: persistenceURL),
-              let decoded = try? JSONDecoder().decode([Workspace].self, from: data) else {
+            let decoded = try? JSONDecoder().decode([Workspace].self, from: data)
+        else {
             let defaultWorkspace = Workspace(
                 name: "Daily Desk",
                 directories: [
-                    DirectoryItem(name: "Desktop", path: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path),
-                    DirectoryItem(name: "Downloads", path: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path)
+                    DirectoryItem(
+                        name: "Desktop",
+                        path: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path),
+                    DirectoryItem(
+                        name: "Downloads",
+                        path: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path),
                 ]
             )
             workspaces = [defaultWorkspace]

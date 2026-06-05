@@ -47,7 +47,8 @@ struct BrowserPane: View {
             }
 
             if let errorMessage {
-                EmptyStateView(title: "Cannot Open Folder", systemImage: "exclamationmark.triangle", description: errorMessage)
+                EmptyStateView(
+                    title: "Cannot Open Folder", systemImage: "exclamationmark.triangle", description: errorMessage)
             } else {
                 fileContent
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -374,9 +375,12 @@ struct BrowserPane: View {
             let widths = resolvedColumnWidths(for: proxy.size.width)
 
             HStack(spacing: 0) {
-                ResizableHeaderCell(width: widths.name, onResize: { phase, delta in
-                    resizeColumn(.nameModified, phase: phase, delta: delta, paneWidth: proxy.size.width)
-                }) {
+                ResizableHeaderCell(
+                    width: widths.name,
+                    onResize: { phase, delta in
+                        resizeColumn(.nameModified, phase: phase, delta: delta, paneWidth: proxy.size.width)
+                    }
+                ) {
                     SortHeaderButton(
                         title: "Name",
                         key: .name,
@@ -386,9 +390,12 @@ struct BrowserPane: View {
                     )
                 }
 
-                ResizableHeaderCell(width: widths.modified, onResize: { phase, delta in
-                    resizeColumn(.modifiedSize, phase: phase, delta: delta, paneWidth: proxy.size.width)
-                }) {
+                ResizableHeaderCell(
+                    width: widths.modified,
+                    onResize: { phase, delta in
+                        resizeColumn(.modifiedSize, phase: phase, delta: delta, paneWidth: proxy.size.width)
+                    }
+                ) {
                     SortHeaderButton(
                         title: "Modified",
                         key: .modified,
@@ -398,9 +405,12 @@ struct BrowserPane: View {
                     )
                 }
 
-                ResizableHeaderCell(width: widths.size, onResize: { phase, delta in
-                    resizeColumn(.sizeKind, phase: phase, delta: delta, paneWidth: proxy.size.width)
-                }) {
+                ResizableHeaderCell(
+                    width: widths.size,
+                    onResize: { phase, delta in
+                        resizeColumn(.sizeKind, phase: phase, delta: delta, paneWidth: proxy.size.width)
+                    }
+                ) {
                     Text("Size")
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.trailing, 18)
@@ -421,7 +431,8 @@ struct BrowserPane: View {
 
     private func resolvedColumnWidths(for paneWidth: CGFloat) -> FileListColumnWidths {
         let contentWidth = max(
-            FileListColumnWidths.minName + FileListColumnWidths.minModified + FileListColumnWidths.minSize + FileListColumnWidths.minKind,
+            FileListColumnWidths.minName + FileListColumnWidths.minModified + FileListColumnWidths.minSize
+                + FileListColumnWidths.minKind,
             paneWidth - 28
         )
         var widths = columnWidths
@@ -457,7 +468,8 @@ struct BrowserPane: View {
         reduce(\.name, minimum: FileListColumnWidths.minName)
     }
 
-    private func resizeColumn(_ boundary: ColumnResizeBoundary, phase: ResizePhase, delta: CGFloat, paneWidth: CGFloat) {
+    private func resizeColumn(_ boundary: ColumnResizeBoundary, phase: ResizePhase, delta: CGFloat, paneWidth: CGFloat)
+    {
         switch phase {
         case .began:
             resizeStartWidths = resolvedColumnWidths(for: paneWidth)
@@ -519,7 +531,8 @@ struct BrowserPane: View {
 
     private var selectedFolderChildren: [BrowserFileItem]? {
         guard let selected = items.first(where: { $0.id == selection }),
-              selected.canBrowseInline else { return nil }
+            selected.canBrowseInline
+        else { return nil }
         return expandedContents[selected.id].map(sorted)
     }
 
@@ -643,7 +656,7 @@ struct BrowserPane: View {
 
     private func compareDates(_ lhs: Date?, _ rhs: Date?) -> ComparisonResult {
         switch (lhs, rhs) {
-        case let (lhs?, rhs?):
+        case (let lhs?, let rhs?):
             if lhs == rhs { return .orderedSame }
             return lhs < rhs ? .orderedAscending : .orderedDescending
         case (nil, nil):
@@ -697,9 +710,10 @@ struct BrowserPane: View {
         pendingRenameTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(520))
             guard !Task.isCancelled,
-                  selection == file.id,
-                  isFocused,
-                  renamingFileID == nil else { return }
+                selection == file.id,
+                isFocused,
+                renamingFileID == nil
+            else { return }
             beginRename(file)
         }
     }
@@ -729,7 +743,8 @@ struct BrowserPane: View {
     }
 
     private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) })
+        else {
             return false
         }
 
@@ -749,7 +764,8 @@ struct BrowserPane: View {
             return url
         }
         if let data = item as? Data,
-           let value = String(data: data, encoding: .utf8) {
+            let value = String(data: data, encoding: .utf8)
+        {
             return URL(string: value)
         }
         if let value = item as? String {

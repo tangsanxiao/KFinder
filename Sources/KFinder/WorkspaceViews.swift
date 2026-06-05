@@ -15,17 +15,18 @@ struct WorkspaceDetailView: View {
                     paneViewModes: $paneViewModes,
                     isSidebarVisible: $isSidebarVisible
                 )
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background {
-                        Color(nsColor: .windowBackgroundColor)
-                        WindowDragArea()
-                            .frame(height: 44)
-                    }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background {
+                    Color(nsColor: .windowBackgroundColor)
+                    WindowDragArea()
+                        .frame(height: 44)
+                }
 
                 Divider()
 
-                MultiPaneBrowserView(workspace: workspace, focusedDirectoryID: $focusedDirectoryID, paneViewModes: $paneViewModes)
+                MultiPaneBrowserView(
+                    workspace: workspace, focusedDirectoryID: $focusedDirectoryID, paneViewModes: $paneViewModes)
             }
         } else {
             EmptyStateView(
@@ -207,7 +208,9 @@ private struct MultiPaneBrowserView: View {
 
         switch workspace.layout {
         case .columns2, .columns3, .grid:
-            gridPaneLayout(directories, columns: workspace.layout.gridColumns, minCells: workspace.layout.preferredPaneCount ?? directories.count)
+            gridPaneLayout(
+                directories, columns: workspace.layout.gridColumns,
+                minCells: workspace.layout.preferredPaneCount ?? directories.count)
         case .mainAndStack:
             mainAndStackPaneLayout(directories)
         }

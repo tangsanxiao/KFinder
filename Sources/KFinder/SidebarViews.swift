@@ -28,7 +28,8 @@ struct SidebarView: View {
             }
             Button("Rename") {
                 if let workspaceToRename {
-                    store.renameWorkspace(id: workspaceToRename.id, to: renameDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+                    store.renameWorkspace(
+                        id: workspaceToRename.id, to: renameDraft.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
                 workspaceToRename = nil
             }

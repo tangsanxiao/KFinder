@@ -26,7 +26,16 @@
   **要求**：测试用 swift-testing（`import Testing` / `@Test` / `#expect`），**不要用 XCTest**（`import XCTest` 会报 `no such module 'XCTest'`）。
   **原因**：XCTest 随完整 Xcode 提供；`Testing.framework` 随 Swift 工具链提供，CLT 环境只有后者。
 
-- **要求**：纯逻辑（日期格式化、布局补齐面板数等）抽成可注入依赖的纯函数/可独立调用的方法并写测试；涉及框架运行时的行为（如 `WorkspaceStore.applyLayout`）写 `@MainActor @Test` 集成测试。
+- **要求**：纯逻辑（日期格式化、布局元数据等）抽成可注入依赖的纯函数并写测试；涉及框架运行时的行为（`WorkspaceStore`、文件操作）写 `@MainActor @Test` 集成测试。
+
+- **情况**：测试 `WorkspaceStore` 时不能污染真实的 Application Support / 用户数据。
+  **要求**：用 `WorkspaceStore(supportDirectory: <临时目录>)` 注入持久化路径；文件操作测试在 `FileManager.temporaryDirectory` 下建临时文件夹跑、用完删。
+  **原因**：默认 `init()` 会读写真实 `~/Library/Application Support/KFinder`；不注入就会让测试有副作用、不确定。
+
+## 代码风格 / 格式化
+
+- **要求**：改完 Swift 代码跑 `swift format format -i --recursive Sources Tests`；提交前 `swift format lint --strict --recursive Sources Tests` 必须 0 违规。配置在 `.swift-format`（4 空格缩进、行宽 120、import 排序等）。CI 有 lint 门禁，不过就红。
+  **原因**：AI 生成的 Swift 风格会漂移；有 formatter + CI 门禁才能让多轮 AI 改动保持一致、diff 干净。
 
 ## UI 约定
 

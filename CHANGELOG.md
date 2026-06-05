@@ -14,6 +14,7 @@ All notable changes to KFinder are recorded here. Newest first.
 - Per-folder macOS privacy (TCC) usage-description strings.
 - CI workflow: `swift build` + `swift test` + `./scripts/build-app.sh` on every push / PR to `main`.
 - Test target using swift-testing (Command Line Tools have no XCTest).
+- Developer/AI guardrails: `swift-format` config (`.swift-format`) with a CI lint gate; `WorkspaceStore` takes an injectable `supportDirectory` so it's testable in isolation; tests covering file-operation collision handling (copy/move/rename/createFolder) and `FileBrowserService`.
 - `AGENTS.md` (collaboration rules) and `ARCHITECTURE.md`.
 
 ### Changed

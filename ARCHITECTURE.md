@@ -11,8 +11,13 @@ For working conventions and known traps, see [AGENTS.md](AGENTS.md).
 
 - `swift build` — compile.
 - `swift test` — swift-testing suite (no XCTest; see AGENTS.md for why).
+- `swift format lint --strict --recursive Sources Tests` — style gate (config: `.swift-format`); `swift format format -i ...` to auto-fix.
 - `./scripts/build-app.sh` — package `dist/KFinder.app` (ad-hoc signed).
 - `./scripts/release.sh` — build + zip + checksum into `release/` (tag-triggered in CI).
+
+`WorkspaceStore` takes an optional `supportDirectory` so tests inject a temp
+directory and stay isolated from the real Application Support; file-operation
+collision handling is covered by tests against temp directories.
 
 ## Process & windowing
 

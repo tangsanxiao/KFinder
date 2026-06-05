@@ -36,7 +36,7 @@ enum FileBrowserService {
             .isDirectoryKey,
             .isHiddenKey,
             .isPackageKey,
-            .localizedTypeDescriptionKey
+            .localizedTypeDescriptionKey,
         ]
 
         let urls = try FileManager.default.contentsOfDirectory(
@@ -47,7 +47,8 @@ enum FileBrowserService {
 
         return urls.compactMap { itemURL in
             guard let values = try? itemURL.resourceValues(forKeys: keys),
-                  values.isHidden != true else { return nil }
+                values.isHidden != true
+            else { return nil }
             return BrowserFileItem(url: itemURL, resourceValues: values)
         }
         .sorted { lhs, rhs in

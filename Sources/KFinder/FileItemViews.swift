@@ -80,9 +80,10 @@ struct FileRow: View {
                         .foregroundStyle(isSelected && isActivePane ? Color.white : Color.secondary)
                         .frame(width: 22, height: FileRowMetrics.height)
                         .contentShape(Rectangle())
-                        .highPriorityGesture(TapGesture().onEnded {
-                            toggleExpansion()
-                        })
+                        .highPriorityGesture(
+                            TapGesture().onEnded {
+                                toggleExpansion()
+                            })
                 } else {
                     Color.clear.frame(width: 22)
                 }
@@ -295,7 +296,8 @@ struct IconFileCell: View {
 
     private var iconSelectionColor: Color {
         guard isSelected else { return Color.clear }
-        return isActivePane ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
+        return isActivePane
+            ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
     }
 
     private var textColor: Color {
@@ -410,7 +412,8 @@ struct ColumnFileRow: View {
 
     private var selectionColor: Color {
         guard isSelected else { return Color(nsColor: .controlBackgroundColor) }
-        return isActivePane ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
+        return isActivePane
+            ? Color(nsColor: .selectedContentBackgroundColor) : Color(nsColor: .separatorColor).opacity(0.55)
     }
 
     private var textColor: Color {
