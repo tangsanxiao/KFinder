@@ -112,6 +112,30 @@ private final class DraggableWindowView: NSView {
 }
 
 @MainActor
+enum AppRelauncher {
+    /// Launches a fresh instance of this app bundle via `open -n`, then
+    /// terminates the current one. Debug convenience — only meaningful when
+    /// running the packaged `.app`.
+    ///
+    /// Stays fully synchronous on the main actor on purpose: routing through
+    /// `NSWorkspace.openApplication`'s completion handler crashes under Swift 6,
+    /// because that handler fires on a background LaunchServices queue while the
+    /// closure is MainActor-isolated, tripping `dispatch_assert_queue` (SIGTRAP).
+    static func relaunch() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-n", Bundle.main.bundlePath]
+        do {
+            try process.run()
+        } catch {
+            NSSound.beep()
+            return
+        }
+        NSApp.terminate(nil)
+    }
+}
+
+@MainActor
 enum WindowZoomController {
     private static var restoreFrames: [ObjectIdentifier: NSRect] = [:]
 

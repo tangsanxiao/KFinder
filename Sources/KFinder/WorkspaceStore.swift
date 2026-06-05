@@ -9,11 +9,9 @@ final class WorkspaceStore: ObservableObject {
     @Published var lastError: String?
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
-    @Published private var recentPaths: [String] = []
 
     private let persistenceURL: URL
     private let finderController = FinderController()
-    private let recentsDefaultsKey = "com.kfinder.recentFolders"
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -26,7 +24,6 @@ final class WorkspaceStore: ObservableObject {
            FileManager.default.fileExists(atPath: legacyPersistenceURL.path) {
             try? FileManager.default.copyItem(at: legacyPersistenceURL, to: persistenceURL)
         }
-        recentPaths = UserDefaults.standard.stringArray(forKey: recentsDefaultsKey) ?? []
         load()
     }
 
@@ -69,22 +66,16 @@ final class WorkspaceStore: ObservableObject {
         save()
     }
 
-    /// A brand-new workspace opens the folders you used most recently instead of
-    /// being empty; on a fresh install with no history it falls back to Home,
-    /// which lists without tripping macOS's per-folder privacy prompt.
+    /// A brand-new workspace always opens the user's Documents folder as its
+    /// single starting pane.
     private func defaultDirectoriesForNewWorkspace() -> [DirectoryItem] {
-        let recents = recentPaths
-            .filter { FileManager.default.fileExists(atPath: $0) }
-            .prefix(2)
+        let documents = documentsURL()
+        return [DirectoryItem(name: documents.lastPathComponent, path: documents.path)]
+    }
 
-        if recents.isEmpty {
-            let home = FileManager.default.homeDirectoryForCurrentUser
-            return [DirectoryItem(name: home.lastPathComponent, path: home.path)]
-        }
-
-        return recents.map { path in
-            DirectoryItem(name: URL(fileURLWithPath: path).lastPathComponent, path: path)
-        }
+    private func documentsURL() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
     }
 
     func deleteSelectedWorkspace() {
@@ -101,6 +92,15 @@ final class WorkspaceStore: ObservableObject {
             selectedWorkspaceID = workspaces.first?.id
         }
         save()
+    }
+
+    /// Switches the layout. Panes are NOT auto-created: when the layout wants
+    /// more panes than there are folders, the grid shows greyed "add a pane"
+    /// placeholders for the empty cells instead (see `MultiPaneBrowserView`).
+    func applyLayout(_ layout: WorkspaceLayout) {
+        guard var workspace = selectedWorkspace else { return }
+        workspace.layout = layout
+        updateSelectedWorkspace(workspace)
     }
 
     func updateSelectedWorkspace(_ workspace: Workspace) {
@@ -151,7 +151,6 @@ final class WorkspaceStore: ObservableObject {
         let path = url.path
         guard paneLocations[id] != path else { return }
         paneLocations[id] = path
-        recordRecent(path)
     }
 
     func paneLocation(for id: UUID?) -> URL? {
@@ -277,6 +276,11 @@ final class WorkspaceStore: ObservableObject {
     func importOpenFinderWindows() {
         do {
             let urls = try finderController.currentFinderWindowDirectories()
+            guard !urls.isEmpty else {
+                statusMessage = "No open Finder windows to import"
+                lastError = "没有找到已打开的 Finder 窗口可导入。请先在 Finder 中打开窗口；首次使用时请在弹出的授权框里允许 KFinder 控制 Finder。"
+                return
+            }
             addDirectories(urls)
             statusMessage = "Imported \(urls.count) Finder window\(urls.count == 1 ? "" : "s")"
         } catch {
@@ -289,13 +293,6 @@ final class WorkspaceStore: ObservableObject {
         if selectedWorkspace == nil {
             appendWorkspace(directories: [])
         }
-    }
-
-    private func recordRecent(_ path: String) {
-        let updated = RecentFolders.updated(recentPaths, adding: path)
-        guard updated != recentPaths else { return }
-        recentPaths = updated
-        UserDefaults.standard.set(recentPaths, forKey: recentsDefaultsKey)
     }
 
     private func load() {

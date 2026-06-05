@@ -66,6 +66,14 @@ struct BrowserPane: View {
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleFileDrop(providers)
         }
+        .onAppear {
+            // Switching workspaces destroys and recreates panes, resetting
+            // @State to the root path. Restore the last location this pane was
+            // viewing (kept live in the store) so navigation survives the switch.
+            if let saved = store.paneLocation(for: root.id), saved != currentURL {
+                currentURL = saved
+            }
+        }
         .task(id: currentURL) {
             reload()
         }
@@ -228,7 +236,7 @@ struct BrowserPane: View {
 
     private var columnContent: some View {
         ScrollView(.horizontal) {
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
                 columnList(sortedItems, width: 240)
 
                 if let selectedFolderChildren {
@@ -556,7 +564,8 @@ struct BrowserPane: View {
                 )
             }
         }
-        .frame(width: width, alignment: .topLeading)
+        .frame(width: width)
+        .frame(maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func reload() {

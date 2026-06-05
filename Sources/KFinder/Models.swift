@@ -95,6 +95,27 @@ enum WorkspaceLayout: String, CaseIterable, Codable, Identifiable {
         case .mainAndStack: "rectangle.leadinghalf.inset.filled"
         }
     }
+
+    /// How many panes this layout is meant to show. `nil` means "show whatever
+    /// folders exist" (Main + Stack adapts to the folder count).
+    var preferredPaneCount: Int? {
+        switch self {
+        case .columns2: return 2
+        case .columns3: return 3
+        case .grid: return 4
+        case .mainAndStack: return nil
+        }
+    }
+
+    /// Number of columns the pane grid uses.
+    var gridColumns: Int {
+        switch self {
+        case .columns2: return 2
+        case .columns3: return 3
+        case .grid: return 2
+        case .mainAndStack: return 1
+        }
+    }
 }
 
 enum WorkspaceStoreError: LocalizedError {

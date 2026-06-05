@@ -10,12 +10,16 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 cd "$ROOT_DIR"
 
+# NOTE: `set -e` + pipefail aborts the whole script on a non-zero git exit.
+# `git describe --exact-match` exits 128 when HEAD has no tag (the normal case
+# between releases), so every git call below MUST end in `|| true`, or the app
+# never gets packaged and dist silently keeps a stale binary.
 VERSION="${KFINDER_VERSION:-}"
 if [[ -z "$VERSION" ]]; then
-    VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//')"
+    VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//' || true)"
 fi
 if [[ -z "$VERSION" ]]; then
-    VERSION="$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//')"
+    VERSION="$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || true)"
 fi
 if [[ -z "$VERSION" ]]; then
     VERSION="0.1.0-dev"
@@ -71,5 +75,10 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# Ad-hoc sign so macOS will grant Apple Events automation (Import Finder
+# Windows) and per-folder privacy access. An UNSIGNED app cannot be granted
+# automation permission, so Finder import silently fails without this.
+codesign --force --deep --sign - "$APP_DIR"
 
 echo "Built $APP_DIR"

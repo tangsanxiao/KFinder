@@ -57,6 +57,11 @@ private struct FinderLikeToolbar: View {
 
             Spacer()
 
+            Text("Layout")
+                .foregroundStyle(.secondary)
+
+            layoutMenu
+
             Text("View")
                 .foregroundStyle(.secondary)
 
@@ -70,6 +75,15 @@ private struct FinderLikeToolbar: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 156)
+
+            Button {
+                AppRelauncher.relaunch()
+            } label: {
+                Image(systemName: "arrow.clockwise.circle")
+                    .frame(width: 30, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .help("Restart app (debug)")
         }
         .padding(.leading, isSidebarVisible ? 0 : 66)
         .frame(height: 44)
@@ -93,18 +107,14 @@ private struct FinderLikeToolbar: View {
     }
 
     private var leadingControls: some View {
-        HStack(spacing: 4) {
-            Button {
-                isSidebarVisible.toggle()
-            } label: {
-                Image(systemName: "sidebar.left")
-                    .frame(width: 30, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .help(isSidebarVisible ? "Collapse sidebar" : "Expand sidebar")
-
-            layoutMenu
+        Button {
+            isSidebarVisible.toggle()
+        } label: {
+            Image(systemName: "sidebar.left")
+                .frame(width: 30, height: 28)
         }
+        .buttonStyle(.borderless)
+        .help(isSidebarVisible ? "Collapse sidebar" : "Expand sidebar")
     }
 
     private var layoutMenu: some View {
@@ -124,9 +134,7 @@ private struct FinderLikeToolbar: View {
 
                 ForEach(WorkspaceLayout.allCases) { layout in
                     Button {
-                        var updated = workspace
-                        updated.layout = layout
-                        store.updateSelectedWorkspace(updated)
+                        store.applyLayout(layout)
                         isLayoutPopoverShown = false
                     } label: {
                         Label(layout.title, systemImage: layout.systemImage)
@@ -166,17 +174,21 @@ private struct FinderLikeToolbar: View {
 }
 
 private struct MultiPaneBrowserView: View {
+    @EnvironmentObject private var store: WorkspaceStore
     let workspace: Workspace
     @Binding var focusedDirectoryID: UUID?
     @Binding var paneViewModes: [UUID: BrowserViewMode]
+    @State private var mainFraction: CGFloat = 0.58
+    @State private var resizeStartMainWidth: CGFloat?
 
     var body: some View {
         if workspace.directories.isEmpty {
-            EmptyStateView(
-                title: "No Folders",
-                systemImage: "folder",
-                description: "Add folders as panes or import the Finder windows you already have open."
-            )
+            // All panes closed — show the same greyed add-pane placeholder as an
+            // empty grid cell, so there is always a way to add a folder back.
+            PaneAddPlaceholder { store.addDirectoriesFromOpenPanel() }
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .windowBackgroundColor))
         } else {
             paneLayout
                 .background(Color(nsColor: .windowBackgroundColor))
@@ -194,12 +206,8 @@ private struct MultiPaneBrowserView: View {
         let directories = visibleDirectories
 
         switch workspace.layout {
-        case .columns2:
-            gridPaneLayout(directories, columns: min(max(directories.count, 1), 2))
-        case .columns3:
-            gridPaneLayout(directories, columns: min(max(directories.count, 1), 3))
-        case .grid:
-            gridPaneLayout(directories, columns: directories.count <= 1 ? 1 : 2)
+        case .columns2, .columns3, .grid:
+            gridPaneLayout(directories, columns: workspace.layout.gridColumns, minCells: workspace.layout.preferredPaneCount ?? directories.count)
         case .mainAndStack:
             mainAndStackPaneLayout(directories)
         }
@@ -207,6 +215,21 @@ private struct MultiPaneBrowserView: View {
 
     private var visibleDirectories: [DirectoryItem] {
         Array(workspace.directories.prefix(6))
+    }
+
+    /// One slot in the pane grid: either a real pane or a greyed placeholder the
+    /// user can click to add a folder (shown when the layout wants more panes
+    /// than there are folders, e.g. after switching layout or closing a pane).
+    private enum PaneCell: Identifiable {
+        case pane(DirectoryItem)
+        case placeholder(Int)
+
+        var id: String {
+            switch self {
+            case .pane(let item): return "pane-\(item.id.uuidString)"
+            case .placeholder(let index): return "placeholder-\(index)"
+            }
+        }
     }
 
     private func keepFocusedPaneVisible() {
@@ -228,49 +251,151 @@ private struct MultiPaneBrowserView: View {
         }
     }
 
-    private func gridPaneLayout(_ directories: [DirectoryItem], columns: Int) -> some View {
-        let rows = chunked(directories, size: columns)
+    private func gridPaneLayout(_ directories: [DirectoryItem], columns: Int, minCells: Int) -> some View {
+        let cellCount = max(directories.count, minCells)
+        let cells: [PaneCell] = (0..<cellCount).map { index in
+            index < directories.count ? .pane(directories[index]) : .placeholder(index)
+        }
+        let rows = chunked(cells, size: columns)
 
         return VStack(spacing: 1) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: 1) {
-                    ForEach(row) { item in
-                        paneView(for: item)
+                    ForEach(row) { cell in
+                        gridCell(cell)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
 
                     if row.count < columns {
                         ForEach(0..<(columns - row.count), id: \.self) { _ in
                             Color.clear
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    private func mainAndStackPaneLayout(_ directories: [DirectoryItem]) -> some View {
-        HStack(spacing: 1) {
-            if let first = directories.first {
-                paneView(for: first)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .layoutPriority(1)
-            }
-
-            let sideItems = Array(directories.dropFirst())
-            if !sideItems.isEmpty {
-                VStack(spacing: 1) {
-                    ForEach(sideItems) { item in
-                        paneView(for: item)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func chunked(_ items: [DirectoryItem], size: Int) -> [[DirectoryItem]] {
+    @ViewBuilder
+    private func gridCell(_ cell: PaneCell) -> some View {
+        switch cell {
+        case .pane(let item):
+            paneView(for: item)
+        case .placeholder:
+            PaneAddPlaceholder { store.addDirectoriesFromOpenPanel() }
+        }
+    }
+
+    private func mainAndStackPaneLayout(_ directories: [DirectoryItem]) -> some View {
+        GeometryReader { proxy in
+            let sideItems = Array(directories.dropFirst())
+
+            if let first = directories.first {
+                let handleWidth: CGFloat = 6
+                let minPane: CGFloat = 200
+                let available = max(proxy.size.width - handleWidth, minPane * 2)
+                let mainWidth = min(max(available * mainFraction, minPane), available - minPane)
+                let sideWidth = available - mainWidth
+
+                HStack(spacing: 0) {
+                    paneView(for: first)
+                        .frame(width: mainWidth)
+
+                    paneResizeHandle(width: handleWidth, available: available, currentMain: mainWidth)
+
+                    // The stack region always shows: existing side panes, or a
+                    // greyed "add a pane" placeholder when there are none, so
+                    // Main + Stack never collapses to a single lone pane.
+                    Group {
+                        if sideItems.isEmpty {
+                            PaneAddPlaceholder { store.addDirectoriesFromOpenPanel() }
+                        } else {
+                            VStack(spacing: 1) {
+                                ForEach(sideItems) { item in
+                                    paneView(for: item)
+                                }
+                            }
+                        }
+                    }
+                    .frame(width: sideWidth)
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
+            }
+        }
+    }
+
+    private func paneResizeHandle(width: CGFloat, available: CGFloat, currentMain: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1)
+            .frame(width: width)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .hoverCursor(.resizeLeftRight)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let start = resizeStartMainWidth ?? currentMain
+                        if resizeStartMainWidth == nil { resizeStartMainWidth = start }
+                        let newMain = start + value.translation.width
+                        mainFraction = min(max(newMain / available, 0.2), 0.8)
+                    }
+                    .onEnded { _ in resizeStartMainWidth = nil }
+            )
+    }
+
+    private func chunked<T>(_ items: [T], size: Int) -> [[T]] {
         stride(from: 0, to: items.count, by: max(size, 1)).map { start in
             Array(items[start..<min(start + max(size, 1), items.count)])
         }
+    }
+}
+
+private struct PaneAddPlaceholder: View {
+    let onAdd: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        ZStack {
+            // Greyed, dashed-border backdrop — decoration only, NOT clickable.
+            Color(nsColor: .windowBackgroundColor)
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.secondary.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6]))
+                        .foregroundStyle(Color.secondary.opacity(0.35))
+                )
+                .padding(6)
+                .allowsHitTesting(false)
+
+            // Only the icon + label triggers the add action, with a hover state.
+            Button(action: onAdd) {
+                VStack(spacing: 8) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 30, weight: .light))
+                    Text("点击添加文件面板")
+                        .font(.system(size: 13))
+                }
+                .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.accentColor.opacity(isHovering ? 0.12 : 0))
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .onHover { isHovering = $0 }
+            .hoverCursor(.pointingHand)
+            .help("添加一个文件面板")
+            .animation(.easeOut(duration: 0.12), value: isHovering)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

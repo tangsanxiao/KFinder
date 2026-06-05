@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test-package:
+    name: Build, Test & Package
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Package .app
+        run: ./scripts/build-app.sh
+
+      - name: Verify app binary exists
+        run: test -x dist/KFinder.app/Contents/MacOS/KFinder
