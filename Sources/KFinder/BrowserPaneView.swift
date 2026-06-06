@@ -231,6 +231,13 @@ struct BrowserPane: View {
         } label: {
             Label("Copy Path", systemImage: "doc.on.doc")
         }
+
+        Button {
+            onFocus()
+            store.openTerminal(at: currentURL)
+        } label: {
+            Label("Open Terminal", systemImage: "terminal")
+        }
     }
 
     private func createFolder() {

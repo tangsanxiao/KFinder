@@ -233,6 +233,20 @@ final class WorkspaceStore: ObservableObject {
         return item.id
     }
 
+    /// Opens Terminal.app with its working directory set to `url`.
+    func openTerminal(at url: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-a", "Terminal", url.path]
+        do {
+            try process.run()
+            statusMessage = "Opened Terminal at \(url.lastPathComponent)"
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Could not open Terminal"
+        }
+    }
+
     // MARK: - Stars (favourite directories)
 
     func isStarred(_ url: URL) -> Bool {
