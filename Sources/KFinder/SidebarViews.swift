@@ -5,6 +5,8 @@ struct SidebarView: View {
     @Binding var focusedDirectoryID: UUID?
     @State private var workspaceToRename: Workspace?
     @State private var renameDraft = ""
+    @State private var starsExpanded = true
+    @State private var bookmarksExpanded = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -14,6 +16,7 @@ struct SidebarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     workspaceSection
+                    starsSection
                     bookmarksSection
                 }
                 .padding(.top, 8)
@@ -76,34 +79,66 @@ struct SidebarView: View {
         }
     }
 
+    private var starsSection: some View {
+        VStack(spacing: 6) {
+            CollapsibleSectionHeader(title: "Stars", isExpanded: $starsExpanded)
+
+            if starsExpanded {
+                if store.stars.isEmpty {
+                    Text("Star a folder from its pane toolbar")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                } else {
+                    ForEach(store.stars) { star in
+                        StarSidebarRow(
+                            star: star,
+                            open: { openDirectory(URL(fileURLWithPath: star.path), title: star.name) },
+                            delete: { store.removeStar(star) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     private var bookmarksSection: some View {
         VStack(spacing: 6) {
-            HStack {
-                Text("Bookmarks")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
+            CollapsibleSectionHeader(title: "Bookmarks", isExpanded: $bookmarksExpanded)
 
-            ForEach(store.systemBookmarks) { bookmark in
-                Button {
-                    focusedDirectoryID = store.openBookmark(bookmark, in: focusedDirectoryID)
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: bookmark.systemImage)
-                            .frame(width: 22)
-                            .foregroundStyle(.blue)
-                        Text(bookmark.title)
-                            .lineLimit(1)
-                        Spacer()
+            if bookmarksExpanded {
+                ForEach(store.systemBookmarks) { bookmark in
+                    Button {
+                        openDirectory(bookmark.url, title: bookmark.title)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: bookmark.systemImage)
+                                .frame(width: 22)
+                                .foregroundStyle(.blue)
+                            Text(bookmark.title)
+                                .lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(height: 30)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 14)
-                    .frame(height: 30)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+        }
+    }
+
+    /// Opens a sidebar directory: fills a selected "待添加" placeholder with a new
+    /// pane, otherwise retargets the focused pane.
+    private func openDirectory(_ url: URL, title: String) {
+        if focusedDirectoryID == nil {
+            // No pane focused — a "待添加" placeholder is the target. Add a new
+            // pane and focus it (never retarget the first pane).
+            focusedDirectoryID = store.openInNewPane(url, title: title)
+        } else {
+            focusedDirectoryID = store.openLocation(url: url, title: title, in: focusedDirectoryID)
         }
     }
 
@@ -112,6 +147,67 @@ struct SidebarView: View {
             get: { workspaceToRename != nil },
             set: { if !$0 { workspaceToRename = nil } }
         )
+    }
+}
+
+private struct CollapsibleSectionHeader: View {
+    let title: String
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+            .padding(.horizontal, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct StarSidebarRow: View {
+    let star: StarItem
+    let open: () -> Void
+    let delete: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "star")
+                .frame(width: 22)
+                .foregroundStyle(.blue)
+            Text(star.name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            if isHovering {
+                Button(action: delete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove from Stars")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 30)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: open)
+        .onHover { isHovering = $0 }
+        .help(star.path)
+        .contextMenu {
+            Button("Remove from Stars", role: .destructive, action: delete)
+        }
     }
 }
 

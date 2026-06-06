@@ -45,6 +45,12 @@
 
 - **要求**：文件/文件夹图标用 `NSWorkspace.shared.icon(forFile:)`（真实系统图标），不要用 SF Symbol 近似；选中时图标不变色（只有文字和展开箭头变白）。
 
+- **情况**：在 `.onChange(of:)` 闭包里调用方法去读 `self` 的其它属性（如 `self.workspace.directories`）。
+  **要求**：`onChange` 闭包里读到的 `self` 是**更新前的旧值**，必须用闭包参数传进来的新值，不能读 `self.xxx`。把需要的新数据作为参数传给被调方法（如 `correctStaleFocus(in: newDirectories)`）。
+  **原因**：曾导致"新建面板后焦点被拉回第一个"——onChange 读旧 directories，把刚加的面板误判为已失效而重置焦点。
+
+- **要求**：跨视图共享的状态（如当前聚焦面板 `focusedPaneID`）放在 store 单一数据源里、在 store 方法内同步设置，不要靠"方法返回 id → 视图赋值 @Binding → 传播回各视图"这条链路，时序不可靠。
+
 ## 通用
 
 - 只用 SwiftPM 一个包管理器；`.build/`、`dist/`、`release/`、`AI_CONTEXT.md` 保持 gitignore。

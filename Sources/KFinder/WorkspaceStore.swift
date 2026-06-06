@@ -9,8 +9,13 @@ final class WorkspaceStore: ObservableObject {
     @Published var lastError: String?
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
+    @Published var stars: [StarItem] = []
+    /// The currently focused pane (nil = a "待添加" placeholder is the target).
+    /// Single source of truth so the sidebar and panes never disagree.
+    @Published var focusedPaneID: UUID?
 
     private let persistenceURL: URL
+    private let starsURL: URL
     private let finderController = FinderController()
 
     /// - Parameter supportDirectory: base directory for persistence. Defaults to
@@ -23,6 +28,7 @@ final class WorkspaceStore: ObservableObject {
         let directory = support.appendingPathComponent("KFinder", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         persistenceURL = directory.appendingPathComponent("workspaces.json")
+        starsURL = directory.appendingPathComponent("stars.json")
 
         if supportDirectory == nil {
             let legacyPersistenceURL =
@@ -36,6 +42,7 @@ final class WorkspaceStore: ObservableObject {
             }
         }
         load()
+        loadStars()
     }
 
     var selectedWorkspace: Workspace? {
@@ -79,27 +86,17 @@ final class WorkspaceStore: ObservableObject {
         return bookmarks
     }
 
+    /// A brand-new workspace starts empty with the Single layout — one pane
+    /// showing the "add a folder" placeholder, no directory written in yet.
     func createWorkspace() {
-        appendWorkspace(directories: defaultDirectoriesForNewWorkspace())
+        appendWorkspace(directories: [], layout: .single)
     }
 
-    private func appendWorkspace(directories: [DirectoryItem]) {
-        let workspace = Workspace(name: nextWorkspaceName(), directories: directories)
+    private func appendWorkspace(directories: [DirectoryItem], layout: WorkspaceLayout = .single) {
+        let workspace = Workspace(name: nextWorkspaceName(), layout: layout, directories: directories)
         workspaces.append(workspace)
         selectedWorkspaceID = workspace.id
         save()
-    }
-
-    /// A brand-new workspace always opens the user's Documents folder as its
-    /// single starting pane.
-    private func defaultDirectoriesForNewWorkspace() -> [DirectoryItem] {
-        let documents = documentsURL()
-        return [DirectoryItem(name: documents.lastPathComponent, path: documents.path)]
-    }
-
-    private func documentsURL() -> URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents")
     }
 
     func deleteSelectedWorkspace() {
@@ -169,6 +166,9 @@ final class WorkspaceStore: ObservableObject {
         guard var workspace = selectedWorkspace else { return }
         workspace.directories.removeAll { $0.id == item.id }
         paneLocations[item.id] = nil
+        // Auto-fit the layout to the remaining pane count so closing a pane
+        // re-flows the rest instead of leaving an empty placeholder cell.
+        workspace.layout = WorkspaceLayout.fitting(paneCount: workspace.directories.count)
         updateSelectedWorkspace(workspace)
     }
 
@@ -196,21 +196,79 @@ final class WorkspaceStore: ObservableObject {
         return url.lastPathComponent.isEmpty ? "Macintosh HD" : url.lastPathComponent
     }
 
-    func openBookmark(_ bookmark: SystemBookmark, in focusedPaneID: UUID?) -> UUID? {
-        guard let focusedPaneID,
-            var workspace = selectedWorkspace,
-            let index = workspace.directories.firstIndex(where: { $0.id == focusedPaneID })
+    @discardableResult
+    func openLocation(url: URL, title: String, in focusedPaneID: UUID?) -> UUID? {
+        guard var workspace = selectedWorkspace else {
+            return openInNewPane(url, title: title)
+        }
+        // Retarget the focused pane, or the first pane if none is focused — never
+        // append (that caused panes to pile up on every sidebar click).
+        let targetID = focusedPaneID ?? workspace.directories.first?.id
+        guard let targetID,
+            let index = workspace.directories.firstIndex(where: { $0.id == targetID })
         else {
-            addDirectories([bookmark.url])
-            return selectedWorkspace?.directories.last?.id
+            return openInNewPane(url, title: title)
         }
 
-        workspace.directories[index].name = bookmark.title
-        workspace.directories[index].path = bookmark.url.path
-        paneLocations[focusedPaneID] = bookmark.url.path
+        workspace.directories[index].name = title
+        workspace.directories[index].path = url.path
+        paneLocations[targetID] = url.path
         updateSelectedWorkspace(workspace)
-        statusMessage = "Opened \(bookmark.title)"
-        return focusedPaneID
+        self.focusedPaneID = targetID
+        statusMessage = "Opened \(title)"
+        return targetID
+    }
+
+    /// Adds a brand-new pane at `url` (no de-duplication) — used to fill a
+    /// selected "待添加" placeholder from the sidebar.
+    @discardableResult
+    func openInNewPane(_ url: URL, title: String) -> UUID? {
+        ensureWorkspaceExists()
+        guard var workspace = selectedWorkspace else { return nil }
+        let item = DirectoryItem(name: title, path: url.path)
+        workspace.directories.append(item)
+        updateSelectedWorkspace(workspace)
+        focusedPaneID = item.id
+        statusMessage = "Opened \(title)"
+        return item.id
+    }
+
+    // MARK: - Stars (favourite directories)
+
+    func isStarred(_ url: URL) -> Bool {
+        stars.contains { $0.path == url.path }
+    }
+
+    func toggleStar(_ url: URL) {
+        if let existing = stars.first(where: { $0.path == url.path }) {
+            removeStar(existing)
+        } else {
+            let name = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+            stars.append(StarItem(name: name, path: url.path))
+            saveStars()
+            statusMessage = "Starred \(name)"
+        }
+    }
+
+    func removeStar(_ star: StarItem) {
+        stars.removeAll { $0.id == star.id }
+        saveStars()
+    }
+
+    private func loadStars() {
+        guard let data = try? Data(contentsOf: starsURL),
+            let decoded = try? JSONDecoder().decode([StarItem].self, from: data)
+        else { return }
+        stars = decoded
+    }
+
+    private func saveStars() {
+        do {
+            let data = try JSONEncoder.pretty.encode(stars)
+            try data.write(to: starsURL, options: .atomic)
+        } catch {
+            lastError = "Could not save stars: \(error.localizedDescription)"
+        }
     }
 
     func paneDestinations(excluding id: UUID) -> [PaneDestination] {
@@ -379,6 +437,7 @@ final class WorkspaceStore: ObservableObject {
         else {
             let defaultWorkspace = Workspace(
                 name: "Daily Desk",
+                layout: .columns2,
                 directories: [
                     DirectoryItem(
                         name: "Desktop",

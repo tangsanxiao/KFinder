@@ -122,7 +122,7 @@ private struct FinderLikeToolbar: View {
         Button {
             isLayoutPopoverShown.toggle()
         } label: {
-            Image(systemName: workspace.layout.systemImage)
+            Image(systemName: (store.selectedWorkspace?.layout ?? workspace.layout).systemImage)
                 .frame(width: 30, height: 28)
         }
         .buttonStyle(.borderless)
@@ -181,36 +181,61 @@ private struct MultiPaneBrowserView: View {
     @Binding var paneViewModes: [UUID: BrowserViewMode]
     @State private var mainFraction: CGFloat = 0.58
     @State private var resizeStartMainWidth: CGFloat?
+    @State private var selectedPlaceholder: Int?
 
     var body: some View {
-        if workspace.directories.isEmpty {
-            // All panes closed — show the same greyed add-pane placeholder as an
-            // empty grid cell, so there is always a way to add a folder back.
-            PaneAddPlaceholder { store.addDirectoriesFromOpenPanel() }
+        Group {
+            if workspace.directories.isEmpty {
+                // All panes closed — one full-area placeholder; it is selectable
+                // so a sidebar bookmark/star can open into it.
+                PaneAddPlaceholder(
+                    isSelected: selectedPlaceholder == 0,
+                    onSelect: { selectPlaceholder(0) },
+                    onAdd: {
+                        selectPlaceholder(0)
+                        store.addDirectoriesFromOpenPanel()
+                    }
+                )
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
-        } else {
-            paneLayout
-                .background(Color(nsColor: .windowBackgroundColor))
-                .onAppear {
-                    keepFocusedPaneVisible()
-                }
-                .onChange(of: workspace.directories) { _ in
-                    keepFocusedPaneVisible()
-                }
+            } else {
+                paneLayout
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .onAppear { correctStaleFocus(in: workspace.directories) }
+                    .onChange(of: workspace.directories) { newDirectories in
+                        clearPlaceholderSelection()
+                        correctStaleFocus(in: newDirectories)
+                    }
+            }
         }
+        .onChange(of: focusedDirectoryID) { newValue in
+            if newValue != nil { clearPlaceholderSelection() }
+        }
+    }
+
+    private func selectPlaceholder(_ index: Int) {
+        selectedPlaceholder = index
+        focusedDirectoryID = nil
+    }
+
+    private func clearPlaceholderSelection() {
+        selectedPlaceholder = nil
     }
 
     @ViewBuilder
     private var paneLayout: some View {
         let directories = visibleDirectories
 
+        // The grid shows the layout's target cell count; cells beyond the
+        // existing folders render as "待添加" (add-a-pane) placeholders.
         switch workspace.layout {
-        case .columns2, .columns3, .grid:
+        case .single, .columns2, .columns3, .rows3, .grid:
             gridPaneLayout(
-                directories, columns: workspace.layout.gridColumns,
-                minCells: workspace.layout.preferredPaneCount ?? directories.count)
+                directories,
+                columns: workspace.layout.gridColumns,
+                minCells: workspace.layout.preferredPaneCount ?? directories.count
+            )
         case .mainAndStack:
             mainAndStackPaneLayout(directories)
         }
@@ -235,10 +260,16 @@ private struct MultiPaneBrowserView: View {
         }
     }
 
-    private func keepFocusedPaneVisible() {
-        let directories = visibleDirectories
-        if focusedDirectoryID == nil || !directories.contains(where: { $0.id == focusedDirectoryID }) {
-            focusedDirectoryID = directories.first?.id
+    /// Corrects focus only when it points at a pane that no longer exists (a
+    /// closed pane). Takes the directories explicitly because, inside an
+    /// `onChange` closure, `self.workspace` is the stale pre-update value — which
+    /// previously made a just-added pane look "missing" and stole focus away.
+    /// A nil focus is intentional (a placeholder is the target) and left alone.
+    private func correctStaleFocus(in directories: [DirectoryItem]) {
+        let visible = Array(directories.prefix(6))
+        guard let id = focusedDirectoryID else { return }
+        if !visible.contains(where: { $0.id == id }) {
+            focusedDirectoryID = visible.first?.id
         }
     }
 
@@ -247,19 +278,27 @@ private struct MultiPaneBrowserView: View {
             root: item,
             isFocused: focusedDirectoryID == item.id,
             viewMode: paneViewModes[item.id, default: .list],
-            onFocus: { focusedDirectoryID = item.id }
+            onFocus: {
+                focusedDirectoryID = item.id
+                clearPlaceholderSelection()
+            }
         )
         .onTapGesture {
             focusedDirectoryID = item.id
+            clearPlaceholderSelection()
         }
     }
 
     private func gridPaneLayout(_ directories: [DirectoryItem], columns: Int, minCells: Int) -> some View {
-        let cellCount = max(directories.count, minCells)
-        let cells: [PaneCell] = (0..<cellCount).map { index in
+        let cols = max(columns, 1)
+        // Round the cell count up to whole rows so every empty slot is a real
+        // (selectable) "待添加" placeholder — never a dead grey filler.
+        let base = max(directories.count, minCells)
+        let cellCount = Int((Double(base) / Double(cols)).rounded(.up)) * cols
+        let cells: [PaneCell] = (0..<max(cellCount, 1)).map { index in
             index < directories.count ? .pane(directories[index]) : .placeholder(index)
         }
-        let rows = chunked(cells, size: columns)
+        let rows = chunked(cells, size: cols)
 
         return VStack(spacing: 1) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
@@ -267,13 +306,6 @@ private struct MultiPaneBrowserView: View {
                     ForEach(row) { cell in
                         gridCell(cell)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-
-                    if row.count < columns {
-                        ForEach(0..<(columns - row.count), id: \.self) { _ in
-                            Color.clear
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -287,8 +319,15 @@ private struct MultiPaneBrowserView: View {
         switch cell {
         case .pane(let item):
             paneView(for: item)
-        case .placeholder:
-            PaneAddPlaceholder { store.addDirectoriesFromOpenPanel() }
+        case .placeholder(let index):
+            PaneAddPlaceholder(
+                isSelected: selectedPlaceholder == index,
+                onSelect: { selectPlaceholder(index) },
+                onAdd: {
+                    selectPlaceholder(index)
+                    store.addDirectoriesFromOpenPanel()
+                }
+            )
         }
     }
 
@@ -309,19 +348,21 @@ private struct MultiPaneBrowserView: View {
 
                     paneResizeHandle(width: handleWidth, available: available, currentMain: mainWidth)
 
-                    // The stack region always shows: existing side panes, or a
-                    // greyed "add a pane" placeholder when there are none, so
-                    // Main + Stack never collapses to a single lone pane.
-                    Group {
-                        if sideItems.isEmpty {
-                            PaneAddPlaceholder { store.addDirectoriesFromOpenPanel() }
-                        } else {
-                            VStack(spacing: 1) {
-                                ForEach(sideItems) { item in
-                                    paneView(for: item)
-                                }
-                            }
+                    // The stack region shows the side panes plus a trailing
+                    // "待添加" placeholder, so there is always a slot to add more.
+                    VStack(spacing: 1) {
+                        ForEach(sideItems) { item in
+                            paneView(for: item)
                         }
+                        let placeholderIndex = directories.count
+                        PaneAddPlaceholder(
+                            isSelected: selectedPlaceholder == placeholderIndex,
+                            onSelect: { selectPlaceholder(placeholderIndex) },
+                            onAdd: {
+                                selectPlaceholder(placeholderIndex)
+                                store.addDirectoriesFromOpenPanel()
+                            }
+                        )
                     }
                     .frame(width: sideWidth)
                 }
@@ -358,19 +399,25 @@ private struct MultiPaneBrowserView: View {
 }
 
 private struct PaneAddPlaceholder: View {
+    let isSelected: Bool
+    let onSelect: () -> Void
     let onAdd: () -> Void
     @State private var isHovering = false
 
     var body: some View {
         ZStack {
-            // Greyed, dashed-border backdrop — decoration only, NOT clickable.
+            // Greyed backdrop. Tapping it selects the slot (so a sidebar
+            // bookmark/star can open into it); the dashed border turns solid
+            // accent when selected.
             Color(nsColor: .windowBackgroundColor)
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color.secondary.opacity(0.06))
+                .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.06))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6]))
-                        .foregroundStyle(Color.secondary.opacity(0.35))
+                        .strokeBorder(
+                            style: StrokeStyle(lineWidth: isSelected ? 2 : 1.5, dash: isSelected ? [] : [6])
+                        )
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.35))
                 )
                 .padding(6)
                 .allowsHitTesting(false)
@@ -400,5 +447,7 @@ private struct PaneAddPlaceholder: View {
             .animation(.easeOut(duration: 0.12), value: isHovering)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect() }
     }
 }

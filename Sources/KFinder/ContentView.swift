@@ -2,23 +2,28 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: WorkspaceStore
-    @State private var focusedDirectoryID: UUID?
     @State private var paneViewModes: [UUID: BrowserViewMode] = [:]
     @State private var isSidebarVisible = true
+
+    /// Focus is owned by the store (single source of truth); this binding lets
+    /// the existing child views keep their `focusedDirectoryID` interface.
+    private var focusedDirectoryID: Binding<UUID?> {
+        Binding(get: { store.focusedPaneID }, set: { store.focusedPaneID = $0 })
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             if isSidebarVisible {
                 SidebarView(
-                    focusedDirectoryID: $focusedDirectoryID
+                    focusedDirectoryID: focusedDirectoryID
                 )
-                .frame(width: 250)
+                .frame(width: 175)
 
                 Divider()
             }
 
             WorkspaceDetailView(
-                focusedDirectoryID: $focusedDirectoryID,
+                focusedDirectoryID: focusedDirectoryID,
                 paneViewModes: $paneViewModes,
                 isSidebarVisible: $isSidebarVisible
             )
@@ -26,10 +31,12 @@ struct ContentView: View {
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowChromeConfigurator())
         .onAppear {
-            focusedDirectoryID = store.selectedWorkspace?.directories.first?.id
+            if store.focusedPaneID == nil {
+                store.focusedPaneID = store.selectedWorkspace?.directories.first?.id
+            }
         }
         .onChange(of: store.selectedWorkspaceID) { _ in
-            focusedDirectoryID = store.selectedWorkspace?.directories.first?.id
+            store.focusedPaneID = store.selectedWorkspace?.directories.first?.id
         }
         .alert("KFinder", isPresented: errorBinding) {
             Button("OK") {

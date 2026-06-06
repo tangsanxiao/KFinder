@@ -285,37 +285,11 @@ struct BrowserPane: View {
                 .help("Parent folder")
 
                 pathCrumbs
+
                 Spacer(minLength: 8)
 
-                PaneToolbarActionButton(
-                    systemImage: "arrow.up.forward.app",
-                    accessibilityLabel: "Reveal in Finder",
-                    tooltip: "在 Finder 中显示当前目录",
-                    hoveredTooltip: $toolbarTooltip
-                ) {
-                    onFocus()
-                    NSWorkspace.shared.activateFileViewerSelecting([currentURL])
-                }
-
-                PaneToolbarActionButton(
-                    systemImage: "doc.on.doc",
-                    accessibilityLabel: "Copy Path",
-                    tooltip: "复制当前目录路径",
-                    hoveredTooltip: $toolbarTooltip
-                ) {
-                    onFocus()
-                    copyPath(currentURL.path)
-                }
-
-                PaneToolbarActionButton(
-                    systemImage: "xmark.circle",
-                    accessibilityLabel: "Close Pane",
-                    tooltip: "关闭当前文件管理面板",
-                    hoveredTooltip: $toolbarTooltip
-                ) {
-                    onFocus()
-                    store.removeDirectory(root)
-                }
+                trailingActions
+                    .layoutPriority(1)
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 12)
@@ -336,39 +310,105 @@ struct BrowserPane: View {
                     .offset(y: 34)
                     .transition(.opacity.combined(with: .move(edge: .top)))
                     .zIndex(3)
+                    // The bubble sits over the toolbar's right edge; without this
+                    // it swallows hover/clicks on the Copy/Close buttons.
+                    .allowsHitTesting(false)
             }
         }
         .frame(height: 44)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var pathCrumbs: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(crumbs, id: \.url.path) { crumb in
-                    Button {
-                        onFocus()
-                        navigate(to: crumb.url)
-                    } label: {
-                        HStack(spacing: 4) {
-                            if crumb.isRoot {
-                                Image(systemName: "internaldrive")
-                            }
-                            Text(crumb.title)
-                                .lineLimit(1)
-                            if crumb.url != crumbs.last?.url {
-                                Image(systemName: "chevron.right")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                    .foregroundStyle(.primary)
-                    .buttonStyle(.plain)
-                }
+    private var trailingActions: some View {
+        HStack(spacing: 8) {
+            PaneToolbarActionButton(
+                systemImage: store.isStarred(currentURL) ? "star.fill" : "star",
+                accessibilityLabel: "Star Folder",
+                tooltip: store.isStarred(currentURL) ? "取消收藏" : "收藏目录",
+                hoveredTooltip: $toolbarTooltip
+            ) {
+                onFocus()
+                store.toggleStar(currentURL)
+            }
+
+            PaneToolbarActionButton(
+                systemImage: "arrow.up.forward.app",
+                accessibilityLabel: "Reveal in Finder",
+                tooltip: "在 Finder 中显示",
+                hoveredTooltip: $toolbarTooltip
+            ) {
+                onFocus()
+                NSWorkspace.shared.activateFileViewerSelecting([currentURL])
+            }
+
+            PaneToolbarActionButton(
+                systemImage: "doc.on.doc",
+                accessibilityLabel: "Copy Path",
+                tooltip: "复制路径",
+                hoveredTooltip: $toolbarTooltip
+            ) {
+                onFocus()
+                copyPath(currentURL.path)
+            }
+
+            PaneToolbarActionButton(
+                systemImage: "xmark.circle",
+                accessibilityLabel: "Close Pane",
+                tooltip: "关闭面板",
+                hoveredTooltip: $toolbarTooltip
+            ) {
+                onFocus()
+                store.removeDirectory(root)
             }
         }
-        .frame(minWidth: 0, maxWidth: .infinity)
+    }
+
+    private var pathCrumbs: some View {
+        let all = crumbs
+        let maxVisible = 4
+        let truncated = all.count > maxVisible
+        let shown = truncated ? Array(all.suffix(maxVisible)) : all
+        let collapseTarget = truncated ? all[all.count - maxVisible - 1] : nil
+
+        return HStack(spacing: 6) {
+            if let collapseTarget {
+                Button {
+                    onFocus()
+                    navigate(to: collapseTarget.url)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("…")
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .fixedSize()
+                .help(collapseTarget.url.path)
+            }
+
+            ForEach(shown, id: \.url.path) { crumb in
+                Button {
+                    onFocus()
+                    navigate(to: crumb.url)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(crumb.title)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if crumb.url != shown.last?.url {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .foregroundStyle(.primary)
+                .buttonStyle(.plain)
+            }
+        }
         .clipped()
     }
 
@@ -503,24 +543,20 @@ struct BrowserPane: View {
         }
     }
 
+    /// Full breadcrumb chain starting at the first real path component (Users,
+    /// Applications, …) — the synthetic "Macintosh HD" root is omitted.
     private var crumbs: [PathCrumb] {
-        var result: [PathCrumb] = []
-        var url = currentURL.standardizedFileURL
-        let root = URL(fileURLWithPath: "/")
-
-        while true {
-            let isRoot = url.path == "/"
-            result.append(PathCrumb(url: url, title: isRoot ? "Macintosh HD" : url.lastPathComponent, isRoot: isRoot))
-            if isRoot { break }
-            let parent = url.deletingLastPathComponent()
-            if parent.path == url.path {
-                result.append(PathCrumb(url: root, title: "Macintosh HD", isRoot: true))
-                break
-            }
-            url = parent
+        let components = currentURL.standardizedFileURL.pathComponents.filter { $0 != "/" }
+        guard !components.isEmpty else {
+            return [PathCrumb(url: URL(fileURLWithPath: "/"), title: "Macintosh HD", isRoot: true)]
         }
-
-        return result.reversed()
+        var result: [PathCrumb] = []
+        var url = URL(fileURLWithPath: "/")
+        for component in components {
+            url.appendPathComponent(component)
+            result.append(PathCrumb(url: url, title: component, isRoot: false))
+        }
+        return result
     }
 
     private var destinations: [PaneDestination] {
@@ -1047,18 +1083,25 @@ private struct PaneToolbarActionButton: View {
     let tooltip: String
     @Binding var hoveredTooltip: String?
     let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .frame(width: 24, height: 24)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(isHovering ? 0.2 : 0))
+                )
                 .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
         .help(tooltip)
-        .onHover { isHovered in
+        .onHover { hovering in
+            isHovering = hovering
             withAnimation(.easeOut(duration: 0.08)) {
-                hoveredTooltip = isHovered ? tooltip : nil
+                hoveredTooltip = hovering ? tooltip : nil
             }
         }
     }
