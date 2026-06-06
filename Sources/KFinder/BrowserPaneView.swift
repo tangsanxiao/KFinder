@@ -78,6 +78,11 @@ struct BrowserPane: View {
         }
         .task(id: currentURL) {
             reload()
+            // Auto-refresh when the directory (or an expanded subfolder) changes
+            // on disk — files added/removed/renamed or their contents edited.
+            for await _ in DirectoryWatcher.changes(of: currentURL) {
+                reloadPreservingExpansion()
+            }
         }
         .onChange(of: store.fileOperationRevision) { _ in
             reloadPreservingExpansion()

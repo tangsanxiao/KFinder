@@ -5,6 +5,7 @@ All notable changes to KFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- Live auto-refresh: panes watch their folder (and expanded subfolders) via FSEvents and reload when files are added, removed, renamed, or edited externally — no manual refresh needed. Events are coalesced (~0.4s) and the watch is torn down when the pane navigates away.
 - Sidebar "Stars": star the current folder from a pane's toolbar; starred folders appear in a sidebar section (blue outline icon) and open into the focused/placeholder pane; remove via hover ✕ or context menu. Bookmarks are collapsed by default; both sections are collapsible.
 - Layouts: "Single" (one pane, the new-workspace default) and "Three Rows" (vertical stack). New workspaces start empty (a "待添加" placeholder, no auto-directory).
 - Pane add-placeholders: empty grid cells show a greyed, selectable "待添加" slot. Selecting one and clicking a sidebar folder opens it there; choosing a larger layout tops the grid up with placeholders; closing panes auto-fits the layout to the remaining count.
