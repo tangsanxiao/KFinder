@@ -18,6 +18,7 @@ This tool was designed and implemented with help from an LLM. The goal is not to
 - Shows folders as multiple file-management panes in one window.
 - Lets each pane navigate independently with back, forward, parent-folder, and breadcrumb controls.
 - Supports list, icon, and column-style pane views.
+- Supports per-pane hidden mode for browsing hidden files, dot-directories, and app package contents.
 - Supports two-column, three-column, grid, and main-plus-stack workspace layouts.
 - Provides Finder-style bookmarks such as Desktop, Downloads, Documents, Applications, Trash, iCloud Drive, and Macintosh HD.
 - Supports starred folders in the sidebar for frequently used pane locations.
@@ -40,6 +41,7 @@ This tool was designed and implemented with help from an LLM. The goal is not to
 - 在一个窗口内以多个文件管理面板展示不同目录。
 - 每个面板都可以独立前进、后退、返回上级目录，并通过面包屑路径导航。
 - 支持列表、图标和类 Column View 的展示方式。
+- 支持在单个面板中切换隐藏模式，用于浏览隐藏文件、点号目录和应用包内容。
 - 支持双列、三列、网格、主面板加堆叠等工作区布局。
 - 提供类似 Finder 的系统书签，如桌面、下载、文稿、应用程序、废纸篓、iCloud Drive 和 Macintosh HD。
 - 支持在侧边栏收藏常用文件夹。

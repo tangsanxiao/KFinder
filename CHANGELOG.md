@@ -5,6 +5,7 @@ All notable changes to XFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- Per-pane hidden mode in the pane toolbar: show/hide dotfiles and hidden folders, and browse app package contents when enabled. Hidden mode is off by default.
 - Renamed the project, SwiftPM package, app bundle, binary, resources, CI paths, release artifacts, and documentation to XFinder.
 - "New MD" in the pane empty-area right-click menu — creates `New.md`, then `New 1.md`, `New 2.md`, etc. on name collisions.
 - "Open Terminal" in the pane's empty-area right-click menu — opens Terminal.app at the pane's current directory.

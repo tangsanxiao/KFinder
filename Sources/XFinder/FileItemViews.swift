@@ -54,6 +54,7 @@ struct FileRow: View {
     let isSelected: Bool
     let isActivePane: Bool
     let isAlternate: Bool
+    let canBrowseInline: Bool
     let isRenaming: Bool
     let columnWidths: FileListColumnWidths
     @Binding var renameDraft: String
@@ -75,7 +76,7 @@ struct FileRow: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 8) {
-                if file.canBrowseInline {
+                if canBrowseInline {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(isSelected && isActivePane ? Color.white : Color.secondary)
@@ -129,7 +130,7 @@ struct FileRow: View {
             }
         }
         .contextMenu {
-            Button(file.canBrowseInline ? "Enter Folder" : "Open") { open() }
+            Button(canBrowseInline ? "Enter Folder" : "Open") { open() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
             Button("Compress") { compress() }
@@ -312,6 +313,7 @@ struct ColumnFileRow: View {
     let file: BrowserFileItem
     let isSelected: Bool
     let isActivePane: Bool
+    let canBrowseInline: Bool
     let isRenaming: Bool
     @Binding var renameDraft: String
     let destinations: [PaneDestination]
@@ -335,7 +337,7 @@ struct ColumnFileRow: View {
 
             Spacer(minLength: 8)
 
-            if file.canBrowseInline {
+            if canBrowseInline {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(isSelected && isActivePane ? .white.opacity(0.8) : .secondary)
@@ -359,7 +361,7 @@ struct ColumnFileRow: View {
             }
         }
         .contextMenu {
-            Button(file.canBrowseInline ? "Enter Folder" : "Open") { open() }
+            Button(canBrowseInline ? "Enter Folder" : "Open") { open() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
             Button("Move to Trash", role: .destructive) { trash() }

@@ -26,6 +26,7 @@ struct BrowserPane: View {
     @State private var errorMessage: String?
     @State private var toolbarTooltip: String?
     @State private var pendingSelectionURL: URL?
+    @State private var showsHiddenItems = false
 
     init(root: DirectoryItem, isFocused: Bool, viewMode: BrowserViewMode, onFocus: @escaping () -> Void) {
         self.root = root
@@ -151,6 +152,7 @@ struct BrowserPane: View {
                                 isSelected: selection.contains(row.file.id),
                                 isActivePane: isFocused,
                                 isAlternate: !index.isMultiple(of: 2),
+                                canBrowseInline: canBrowseInline(row.file),
                                 isRenaming: renamingFileID == row.file.id,
                                 columnWidths: widths,
                                 renameDraft: $renameDraft,
@@ -355,6 +357,17 @@ struct BrowserPane: View {
             ) {
                 onFocus()
                 store.toggleStar(currentURL)
+            }
+
+            PaneToolbarActionButton(
+                systemImage: showsHiddenItems ? "eye" : "eye.slash",
+                accessibilityLabel: "Toggle Hidden Items",
+                tooltip: showsHiddenItems ? "隐藏隐藏文件和应用包内容" : "显示隐藏文件和应用包内容",
+                hoveredTooltip: $toolbarTooltip
+            ) {
+                onFocus()
+                showsHiddenItems.toggle()
+                reload()
             }
 
             PaneToolbarActionButton(
@@ -596,7 +609,7 @@ struct BrowserPane: View {
     private var selectedFolderChildren: [BrowserFileItem]? {
         guard let selectedID = singleSelection,
             let selected = items.first(where: { $0.id == selectedID }),
-            selected.canBrowseInline
+            canBrowseInline(selected)
         else { return nil }
         return expandedContents[selected.id].map(sorted)
     }
@@ -608,6 +621,7 @@ struct BrowserPane: View {
                     file: file,
                     isSelected: selection.contains(file.id),
                     isActivePane: isFocused,
+                    canBrowseInline: canBrowseInline(file),
                     isRenaming: renamingFileID == file.id,
                     renameDraft: $renameDraft,
                     destinations: destinations,
@@ -649,7 +663,7 @@ struct BrowserPane: View {
     private func reload() {
         do {
             store.updatePaneLocation(id: root.id, url: currentURL)
-            items = try FileBrowserService.contents(of: currentURL)
+            items = try FileBrowserService.contents(of: currentURL, includingHidden: showsHiddenItems)
             expandedFolders.removeAll()
             expandedContents.removeAll()
             cancelPendingRename()
@@ -664,10 +678,13 @@ struct BrowserPane: View {
     private func reloadPreservingExpansion(selecting targetURL: URL? = nil) {
         do {
             store.updatePaneLocation(id: root.id, url: currentURL)
-            items = try FileBrowserService.contents(of: currentURL)
+            items = try FileBrowserService.contents(of: currentURL, includingHidden: showsHiddenItems)
             for folderID in expandedFolders {
                 let folderURL = URL(fileURLWithPath: folderID)
-                expandedContents[folderID] = try? FileBrowserService.contents(of: folderURL)
+                expandedContents[folderID] = try? FileBrowserService.contents(
+                    of: folderURL,
+                    includingHidden: showsHiddenItems
+                )
             }
             if let targetURL, selectLoadedFile(at: targetURL) != nil {
                 pendingSelectionURL = nil
@@ -686,7 +703,7 @@ struct BrowserPane: View {
     private func flatten(_ source: [BrowserFileItem], depth: Int) -> [FileTreeRow] {
         source.flatMap { file -> [FileTreeRow] in
             var rows = [FileTreeRow(file: file, depth: depth)]
-            if expandedFolders.contains(file.id), let children = expandedContents[file.id] {
+            if canBrowseInline(file), expandedFolders.contains(file.id), let children = expandedContents[file.id] {
                 rows.append(contentsOf: flatten(sorted(children), depth: depth + 1))
             }
             return rows
@@ -737,14 +754,14 @@ struct BrowserPane: View {
     }
 
     private func toggleExpansion(_ file: BrowserFileItem) {
-        guard file.canBrowseInline else { return }
+        guard canBrowseInline(file) else { return }
         if expandedFolders.contains(file.id) {
             expandedFolders.remove(file.id)
             return
         }
 
         do {
-            expandedContents[file.id] = try FileBrowserService.contents(of: file.url)
+            expandedContents[file.id] = try FileBrowserService.contents(of: file.url, includingHidden: showsHiddenItems)
             expandedFolders.insert(file.id)
         } catch {
             store.lastError = error.localizedDescription
@@ -836,9 +853,10 @@ struct BrowserPane: View {
     }
 
     private func prepareColumnDrillDown(_ file: BrowserFileItem) {
-        guard viewMode == .columns, file.canBrowseInline else { return }
+        guard viewMode == .columns, canBrowseInline(file) else { return }
         if expandedContents[file.id] == nil {
-            expandedContents[file.id] = try? FileBrowserService.contents(of: file.url)
+            expandedContents[file.id] = try? FileBrowserService.contents(
+                of: file.url, includingHidden: showsHiddenItems)
         }
     }
 
@@ -958,7 +976,7 @@ struct BrowserPane: View {
 
     private func open(_ file: BrowserFileItem) {
         cancelPendingRename()
-        if file.canBrowseInline {
+        if canBrowseInline(file) {
             navigate(to: file.url)
         } else {
             NSWorkspace.shared.open(file.url)
@@ -997,6 +1015,10 @@ struct BrowserPane: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(path, forType: .string)
         store.statusMessage = "Copied path"
+    }
+
+    private func canBrowseInline(_ file: BrowserFileItem) -> Bool {
+        file.canBrowseInline(showHiddenItems: showsHiddenItems)
     }
 }
 

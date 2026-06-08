@@ -29,7 +29,7 @@ struct BrowserFileItem: Identifiable, Hashable {
 }
 
 enum FileBrowserService {
-    static func contents(of url: URL) throws -> [BrowserFileItem] {
+    static func contents(of url: URL, includingHidden: Bool = false) throws -> [BrowserFileItem] {
         let keys: Set<URLResourceKey> = [
             .contentModificationDateKey,
             .fileSizeKey,
@@ -46,9 +46,10 @@ enum FileBrowserService {
         )
 
         return urls.compactMap { itemURL in
-            guard let values = try? itemURL.resourceValues(forKeys: keys),
-                values.isHidden != true
-            else { return nil }
+            guard let values = try? itemURL.resourceValues(forKeys: keys) else { return nil }
+            if !includingHidden, values.isHidden == true {
+                return nil
+            }
             return BrowserFileItem(url: itemURL, resourceValues: values)
         }
         .sorted { lhs, rhs in
@@ -62,6 +63,10 @@ enum FileBrowserService {
 
 extension BrowserFileItem {
     var canBrowseInline: Bool {
-        isDirectory && !isPackage
+        canBrowseInline(showHiddenItems: false)
+    }
+
+    func canBrowseInline(showHiddenItems: Bool) -> Bool {
+        isDirectory && (showHiddenItems || !isPackage)
     }
 }
