@@ -1,10 +1,12 @@
 # Changelog
 
-All notable changes to KFinder are recorded here. Newest first.
+All notable changes to XFinder are recorded here. Newest first.
 
 ## [Unreleased]
 
 ### Added
+- Renamed the project, SwiftPM package, app bundle, binary, resources, CI paths, release artifacts, and documentation to XFinder.
+- "New MD" in the pane empty-area right-click menu — creates `New.md`, then `New 1.md`, `New 2.md`, etc. on name collisions.
 - "Open Terminal" in the pane's empty-area right-click menu — opens Terminal.app at the pane's current directory.
 - Live auto-refresh: panes watch their folder (and expanded subfolders) via FSEvents and reload when files are added, removed, renamed, or edited externally — no manual refresh needed. Events are coalesced (~0.4s) and the watch is torn down when the pane navigates away.
 - Sidebar "Stars": star the current folder from a pane's toolbar; starred folders appear in a sidebar section (blue outline icon) and open into the focused/placeholder pane; remove via hover ✕ or context menu. Bookmarks are collapsed by default; both sections are collapsible.
@@ -13,7 +15,7 @@ All notable changes to KFinder are recorded here. Newest first.
 - Breadcrumb path is capped to the last 4 components (with a leading "…" that navigates up) and never overlaps the toolbar action buttons.
 - Per-button hover state + brief tooltips on the pane toolbar actions; a debug Restart button.
 - Multi-selection in the list/icons views: Command/Option-click toggles individual files, Shift-click selects a contiguous range from the anchor.
-- Compress in the file right-click menu: zips the selected files into `<current-folder-name>.zip`, placed in the directory of the shallowest selected item. Runs `zip` asynchronously so the UI never blocks; archive name de-duplicates on collision.
+- Compress in the file right-click menu: zips the selected files into `<selected-item-folder-name>.zip`, placed in the selected item's containing directory. Runs `zip` asynchronously so the UI never blocks; archive name de-duplicates on collision.
 - Real Finder system icons in every view via `NSWorkspace.icon(forFile:)`; icons keep their colour when a row is selected.
 - Relative modified dates: 今天 / 昨天 / 前天 + time for recent edits.
 - Right-click an empty pane area to create a New Folder (auto-selects and enters inline rename).
@@ -27,6 +29,8 @@ All notable changes to KFinder are recorded here. Newest first.
 - `AGENTS.md` (collaboration rules) and `ARCHITECTURE.md`.
 
 ### Changed
+- Right-side toolbar, pane container, and empty placeholder backgrounds now use the same system background as the sidebar and file panes.
+- Compression now selects the newly created zip archive after it appears.
 - List rows redone for Finder parity: compact row height, full-bleed rounded selection that covers one alternating-stripe band exactly.
 - Alternating stripes are painted per row inside a lazy list so they scroll with the content; the empty area below the last file is filled by a viewport-bounded canvas.
 - New workspaces open the Documents folder by default.
@@ -34,6 +38,8 @@ All notable changes to KFinder are recorded here. Newest first.
 - Pane layout uses flexible stacks instead of absolute frames; panes fill their grid cells evenly.
 
 ### Fixed
+- Moving a file to Trash from the context menu no longer collapses expanded folders in the current pane.
+- Deeply expanded list rows no longer let long filenames overflow into the Modified column.
 - Focus no longer jumps to the first pane after filling a placeholder from the sidebar. Root cause: a method called from `.onChange(of:)` read `self`'s stale (pre-update) directories, so the just-added pane looked "missing" and focus was reset. Focus is now a single source of truth in the store and `onChange` uses the new value.
 - Sidebar clicks no longer pile up panes endlessly: a nil-focus click adds one pane and focuses it; a focused-pane click retargets that pane.
 - Pane toolbar buttons (Reveal/Copy/Close) were unclickable — the breadcrumb's horizontal `ScrollView` hit-area (and the tooltip bubble) covered them; the breadcrumb is now a plain HStack and the tooltip is non-interactive.

@@ -38,7 +38,7 @@ struct ContentView: View {
         .onChange(of: store.selectedWorkspaceID) { _ in
             store.focusedPaneID = store.selectedWorkspace?.directories.first?.id
         }
-        .alert("KFinder", isPresented: errorBinding) {
+        .alert("XFinder", isPresented: errorBinding) {
             Button("OK") {
                 store.lastError = nil
             }

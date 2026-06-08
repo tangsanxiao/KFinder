@@ -1,6 +1,6 @@
 # Architecture
 
-KFinder is a macOS multi-pane file manager (QSpace-inspired) built as a single
+XFinder is a macOS multi-pane file manager (QSpace-inspired) built as a single
 SwiftPM executable using SwiftUI with AppKit interop. This document describes the
 stable topology — module boundaries and data flow. Volatile specifics (exact
 sizes, counts, lists) live in the code and tests, which can't go stale.
@@ -12,7 +12,7 @@ For working conventions and known traps, see [AGENTS.md](AGENTS.md).
 - `swift build` — compile.
 - `swift test` — swift-testing suite (no XCTest; see AGENTS.md for why).
 - `swift format lint --strict --recursive Sources Tests` — style gate (config: `.swift-format`); `swift format format -i ...` to auto-fix.
-- `./scripts/build-app.sh` — package `dist/KFinder.app` (ad-hoc signed).
+- `./scripts/build-app.sh` — package `dist/XFinder.app` (ad-hoc signed).
 - `./scripts/release.sh` — build + zip + checksum into `release/` (tag-triggered in CI).
 
 `WorkspaceStore` takes an optional `supportDirectory` so tests inject a temp
@@ -21,7 +21,7 @@ collision handling is covered by tests against temp directories.
 
 ## Process & windowing
 
-- `KFinderApp` (`@main`) hosts a single `WindowGroup` with a hidden titlebar.
+- `XFinderApp` (`@main`) hosts a single `WindowGroup` with a hidden titlebar.
 - `WindowChromeConfigurator` configures the `NSWindow` once (transparent titlebar,
   full-size content). The app deliberately avoids `NavigationSplitView` and uses a
   custom sidebar/content split to keep titlebar spacing controllable.
@@ -41,8 +41,9 @@ every file-system mutation:
   `preferredPaneCount`. `applyLayout` only switches the layout; when it wants
   more panes than there are folders, the grid renders greyed "add a pane"
   placeholders for the empty cells instead of auto-creating panes.
-- **File operations** — create folder, copy, move, rename, trash. Each bumps
-  `fileOperationRevision`, which panes observe to reload.
+- **File operations** — create folder, create Markdown file, copy, move, rename,
+  trash, and compress. Each mutation bumps `fileOperationRevision`, which panes
+  observe to reload while preserving local expansion state where appropriate.
 - **System bookmarks** — Desktop/Documents/Downloads/etc. for the sidebar.
 
 Views never touch the file system directly; they call the store.
@@ -72,12 +73,14 @@ ContentView
 
 `FileBrowserService` is a stateless enum that reads a directory's contents into
 `BrowserFileItem` values (name, dates, size, kind, package/dir flags), hiding
-dot/hidden files and sorting folders-first. `DisplayFormatters` turns dates/sizes
-into display strings (pure, injectable clock for testing).
+dot/hidden files and sorting folders-first. `BrowserPane` keeps inline expansion
+state and reloads expanded subfolders after file operations or FSEvents updates.
+`DisplayFormatters` turns dates/sizes into display strings (pure, injectable
+clock for testing).
 
 ## Persistence
 
-- Workspaces → JSON in `~/Library/Application Support/KFinder/` (migrated from a
+- Workspaces → JSON in `~/Library/Application Support/XFinder/` (migrated from a
   legacy `FinderHub` directory if present).
 - `dist/`, `release/`, `.build/`, and `AI_CONTEXT.md` are gitignored.
 

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct KFinderApp: App {
+struct XFinderApp: App {
     @StateObject private var store = WorkspaceStore()
 
     var body: some Scene {

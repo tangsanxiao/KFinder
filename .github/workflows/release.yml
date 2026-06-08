@@ -25,5 +25,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" release/* \
-            --title "KFinder ${GITHUB_REF_NAME}" \
-            --notes "KFinder macOS test build. This build uses ad-hoc signing, so first launch may require right-click Open or approving it in System Settings."
+            --title "XFinder ${GITHUB_REF_NAME}" \
+            --notes "XFinder macOS test build. This build uses ad-hoc signing, so first launch may require right-click Open or approving it in System Settings."

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import KFinder
+@testable import XFinder
 
 /// Exercises the file-mutating store operations — the highest-risk code (data
 /// loss) — against a real temp directory so collision handling is verified end
@@ -10,7 +10,7 @@ import Testing
 @MainActor
 private func makeFixture() throws -> (store: WorkspaceStore, root: URL) {
     let root = FileManager.default.temporaryDirectory
-        .appendingPathComponent("KFinderTests-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("XFinderTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     let store = WorkspaceStore(supportDirectory: root.appendingPathComponent("support"))
     return (store, root)
@@ -117,4 +117,21 @@ private func makeDir(_ url: URL) throws {
     #expect(second?.lastPathComponent == "Untitled 2")
     #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Untitled").path))
     #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("Untitled 2").path))
+}
+
+@MainActor
+@Test func createMarkdownFileDeduplicatesFromOne() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let first = store.createMarkdownFile(in: root)
+    let second = store.createMarkdownFile(in: root)
+    let third = store.createMarkdownFile(in: root)
+
+    #expect(first?.lastPathComponent == "New.md")
+    #expect(second?.lastPathComponent == "New 1.md")
+    #expect(third?.lastPathComponent == "New 2.md")
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("New.md").path))
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("New 1.md").path))
+    #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("New 2.md").path))
 }

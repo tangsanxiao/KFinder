@@ -93,8 +93,9 @@ struct FileRow: View {
 
                 nameContent
             }
-            .frame(width: columnWidths.name, alignment: .leading)
             .padding(.leading, CGFloat(depth) * 18)
+            .frame(width: columnWidths.name, alignment: .leading)
+            .clipped()
 
             Text(DisplayFormatters.date(file.modificationDate))
                 .foregroundStyle(secondaryTextColor)

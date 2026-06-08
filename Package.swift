@@ -3,22 +3,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "KFinder",
+    name: "XFinder",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "KFinder", targets: ["KFinder"])
+        .executable(name: "XFinder", targets: ["XFinder"])
     ],
     targets: [
         .executableTarget(
-            name: "KFinder",
-            path: "Sources/KFinder"
+            name: "XFinder",
+            path: "Sources/XFinder"
         ),
         .testTarget(
-            name: "KFinderTests",
-            dependencies: ["KFinder"],
-            path: "Tests/KFinderTests"
+            name: "XFinderTests",
+            dependencies: ["XFinder"],
+            path: "Tests/XFinderTests"
         )
     ]
 )

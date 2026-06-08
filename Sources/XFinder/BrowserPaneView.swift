@@ -25,6 +25,7 @@ struct BrowserPane: View {
     @State private var resizeStartWidths: FileListColumnWidths?
     @State private var errorMessage: String?
     @State private var toolbarTooltip: String?
+    @State private var pendingSelectionURL: URL?
 
     init(root: DirectoryItem, isFocused: Bool, viewMode: BrowserViewMode, onFocus: @escaping () -> Void) {
         self.root = root
@@ -85,7 +86,7 @@ struct BrowserPane: View {
             }
         }
         .onChange(of: store.fileOperationRevision) { _ in
-            reloadPreservingExpansion()
+            reloadPreservingExpansion(selecting: pendingSelectionURL)
         }
         .onChange(of: root.path) { newPath in
             currentURL = URL(fileURLWithPath: newPath)
@@ -176,16 +177,16 @@ struct BrowserPane: View {
                                 reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
                                 trash: {
                                     store.moveToTrash(row.file.url)
-                                    reload()
+                                    reloadPreservingExpansion()
                                 },
                                 compress: { compress(row.file) },
                                 copyTo: { destination in
                                     store.copy(row.file.url, to: destination)
-                                    reload()
+                                    reloadPreservingExpansion()
                                 },
                                 moveTo: { destination in
                                     store.move(row.file.url, to: destination)
-                                    reload()
+                                    reloadPreservingExpansion()
                                 }
                             )
                             .frame(width: proxy.size.width, alignment: .leading)
@@ -219,6 +220,12 @@ struct BrowserPane: View {
         }
 
         Button {
+            createMarkdownFile()
+        } label: {
+            Label("New MD", systemImage: "doc.badge.plus")
+        }
+
+        Button {
             onFocus()
             NSWorkspace.shared.activateFileViewerSelecting([currentURL])
         } label: {
@@ -244,9 +251,16 @@ struct BrowserPane: View {
         onFocus()
         guard let url = store.createFolder(in: currentURL) else { return }
         reloadPreservingExpansion()
-        guard let item = items.first(where: { $0.url == url }) else { return }
+        guard let item = selectLoadedFile(at: url) else { return }
         selectOnly(item)
         beginRename(item)
+    }
+
+    private func createMarkdownFile() {
+        onFocus()
+        guard let url = store.createMarkdownFile(in: currentURL) else { return }
+        reloadPreservingExpansion()
+        _ = selectLoadedFile(at: url)
     }
 
     private var columnContent: some View {
@@ -615,15 +629,15 @@ struct BrowserPane: View {
                     reveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) },
                     trash: {
                         store.moveToTrash(file.url)
-                        reload()
+                        reloadPreservingExpansion()
                     },
                     copyTo: { destination in
                         store.copy(file.url, to: destination)
-                        reload()
+                        reloadPreservingExpansion()
                     },
                     moveTo: { destination in
                         store.move(file.url, to: destination)
-                        reload()
+                        reloadPreservingExpansion()
                     }
                 )
             }
@@ -647,13 +661,16 @@ struct BrowserPane: View {
         }
     }
 
-    private func reloadPreservingExpansion() {
+    private func reloadPreservingExpansion(selecting targetURL: URL? = nil) {
         do {
             store.updatePaneLocation(id: root.id, url: currentURL)
             items = try FileBrowserService.contents(of: currentURL)
             for folderID in expandedFolders {
                 let folderURL = URL(fileURLWithPath: folderID)
                 expandedContents[folderID] = try? FileBrowserService.contents(of: folderURL)
+            }
+            if let targetURL, selectLoadedFile(at: targetURL) != nil {
+                pendingSelectionURL = nil
             }
             errorMessage = nil
         } catch {
@@ -771,6 +788,24 @@ struct BrowserPane: View {
         prepareColumnDrillDown(file)
     }
 
+    @discardableResult
+    private func selectLoadedFile(at url: URL) -> BrowserFileItem? {
+        let targetPath = url.standardizedFileURL.path
+        guard let file = loadedFiles.first(where: { $0.url.standardizedFileURL.path == targetPath }) else {
+            return nil
+        }
+        cancelPendingRename()
+        selection = [file.id]
+        selectionAnchor = file.id
+        renamingFileID = nil
+        prepareColumnDrillDown(file)
+        return file
+    }
+
+    private var loadedFiles: [BrowserFileItem] {
+        items + expandedContents.values.flatMap { $0 }
+    }
+
     private func toggleSelection(_ file: BrowserFileItem) {
         cancelPendingRename()
         renamingFileID = nil
@@ -858,16 +893,17 @@ struct BrowserPane: View {
         onFocus()
         let targets = actionTargets(for: file)
         guard !targets.isEmpty else { return }
-        // Output goes in the directory of the shallowest selected item; the
-        // archive is named after the pane's current directory.
+        // Output goes in the directory of the shallowest selected item, and the
+        // default archive name follows that containing folder instead of the
+        // pane root. This matches Finder-like behavior for expanded subfolders.
         let shallowest = targets.min { lhs, rhs in
             lhs.url.pathComponents.count < rhs.url.pathComponents.count
         }
         let outputDirectory = (shallowest ?? targets[0]).url.deletingLastPathComponent()
-        let baseName = currentURL.lastPathComponent.isEmpty ? "Archive" : currentURL.lastPathComponent
-        store.compress(
+        let baseName = outputDirectory.lastPathComponent.isEmpty ? "Archive" : outputDirectory.lastPathComponent
+        pendingSelectionURL = store.compress(
             targets.map(\.url),
-            relativeTo: currentURL,
+            relativeTo: outputDirectory,
             archiveName: baseName,
             into: outputDirectory
         )

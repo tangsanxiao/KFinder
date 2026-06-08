@@ -25,7 +25,7 @@ final class WorkspaceStore: ObservableObject {
     init(supportDirectory: URL? = nil) {
         let support =
             supportDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let directory = support.appendingPathComponent("KFinder", isDirectory: true)
+        let directory = support.appendingPathComponent("XFinder", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         persistenceURL = directory.appendingPathComponent("workspaces.json")
         starsURL = directory.appendingPathComponent("stars.json")
@@ -191,7 +191,7 @@ final class WorkspaceStore: ObservableObject {
             let url = paneLocation(for: id)
                 ?? selectedWorkspace?.directories.first.map({ URL(fileURLWithPath: $0.path) })
         else {
-            return selectedWorkspace?.name ?? "KFinder"
+            return selectedWorkspace?.name ?? "XFinder"
         }
         return url.lastPathComponent.isEmpty ? "Macintosh HD" : url.lastPathComponent
     }
@@ -362,12 +362,33 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    @discardableResult
+    func createMarkdownFile(in directory: URL, named name: String = "New") -> URL? {
+        let target = uniqueDestinationURL(
+            for: directory.appendingPathComponent("\(name).md"),
+            in: directory,
+            firstDuplicateIndex: 1
+        )
+        do {
+            try Data().write(to: target, options: .withoutOverwriting)
+            fileOperationRevision += 1
+            statusMessage = "Created \(target.lastPathComponent)"
+            return target
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "New Markdown failed"
+            return nil
+        }
+    }
+
     /// Zips `urls` into `<archiveName>.zip` placed in `outputDirectory`. Archive
-    /// entries are stored relative to `baseDirectory` (the pane's current folder)
-    /// so the zip keeps clean, nested paths. Runs `/usr/bin/zip` asynchronously so
-    /// the UI never blocks; completion updates state via `fileOperationRevision`.
-    func compress(_ urls: [URL], relativeTo baseDirectory: URL, archiveName: String, into outputDirectory: URL) {
-        guard !urls.isEmpty else { return }
+    /// entries are stored relative to `baseDirectory` so the zip keeps clean,
+    /// nested paths. Runs `/usr/bin/zip` asynchronously so the UI never blocks;
+    /// completion updates state via `fileOperationRevision`.
+    @discardableResult
+    func compress(_ urls: [URL], relativeTo baseDirectory: URL, archiveName: String, into outputDirectory: URL) -> URL?
+    {
+        guard !urls.isEmpty else { return nil }
 
         let target = uniqueDestinationURL(
             for: outputDirectory.appendingPathComponent("\(archiveName).zip"),
@@ -397,9 +418,11 @@ final class WorkspaceStore: ObservableObject {
         do {
             try process.run()
             statusMessage = "Compressing \(count) item\(count == 1 ? "" : "s")…"
+            return target
         } catch {
             lastError = error.localizedDescription
             statusMessage = "Compress failed"
+            return nil
         }
     }
 
@@ -428,7 +451,7 @@ final class WorkspaceStore: ObservableObject {
             let urls = try finderController.currentFinderWindowDirectories()
             guard !urls.isEmpty else {
                 statusMessage = "No open Finder windows to import"
-                lastError = "没有找到已打开的 Finder 窗口可导入。请先在 Finder 中打开窗口；首次使用时请在弹出的授权框里允许 KFinder 控制 Finder。"
+                lastError = "没有找到已打开的 Finder 窗口可导入。请先在 Finder 中打开窗口；首次使用时请在弹出的授权框里允许 XFinder 控制 Finder。"
                 return
             }
             addDirectories(urls)
@@ -492,12 +515,16 @@ final class WorkspaceStore: ObservableObject {
         return candidate
     }
 
-    private func uniqueDestinationURL(for sourceURL: URL, in destinationDirectory: URL) -> URL {
+    private func uniqueDestinationURL(
+        for sourceURL: URL,
+        in destinationDirectory: URL,
+        firstDuplicateIndex: Int = 2
+    ) -> URL {
         let fileManager = FileManager.default
         let baseName = sourceURL.deletingPathExtension().lastPathComponent
         let pathExtension = sourceURL.pathExtension
         var candidate = destinationDirectory.appendingPathComponent(sourceURL.lastPathComponent)
-        var index = 2
+        var index = firstDuplicateIndex
 
         while fileManager.fileExists(atPath: candidate.path) {
             let name = pathExtension.isEmpty ? "\(baseName) \(index)" : "\(baseName) \(index).\(pathExtension)"

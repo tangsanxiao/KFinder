@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import KFinder
+@testable import XFinder
 
 @Test func directoryWatcherFiresWhenContentsChange() async throws {
     let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("KFinderWatch-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("XFinderWatch-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 

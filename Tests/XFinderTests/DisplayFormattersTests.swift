@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import KFinder
+@testable import XFinder
 
 /// Fixed calendar + reference instant so the relative-date logic is
 /// deterministic regardless of the machine's clock or time zone.

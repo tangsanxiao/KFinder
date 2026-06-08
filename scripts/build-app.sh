@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="KFinder"
+APP_NAME="XFinder"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
@@ -14,7 +14,7 @@ cd "$ROOT_DIR"
 # `git describe --exact-match` exits 128 when HEAD has no tag (the normal case
 # between releases), so every git call below MUST end in `|| true`, or the app
 # never gets packaged and dist silently keeps a stale binary.
-VERSION="${KFINDER_VERSION:-}"
+VERSION="${XFINDER_VERSION:-}"
 if [[ -z "$VERSION" ]]; then
     VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//' || true)"
 fi
@@ -33,7 +33,7 @@ rm -rf "$ROOT_DIR/dist/FinderHub.app"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp ".build/release/$APP_NAME" "$MACOS_DIR/$APP_NAME"
-cp "$ROOT_DIR/Assets/KFinder.icns" "$RESOURCES_DIR/KFinder.icns"
+cp "$ROOT_DIR/Assets/XFinder.icns" "$RESOURCES_DIR/XFinder.icns"
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -43,15 +43,15 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>KFinder</string>
+    <string>XFinder</string>
     <key>CFBundleIdentifier</key>
-    <string>local.kfinder.app</string>
+    <string>local.xfinder.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>KFinder</string>
+    <string>XFinder</string>
     <key>CFBundleIconFile</key>
-    <string>KFinder</string>
+    <string>XFinder</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -61,17 +61,17 @@ cat > "$CONTENTS_DIR/Info.plist" <<PLIST
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>KFinder controls Finder to import open Finder windows as panes for your workspaces.</string>
+    <string>XFinder controls Finder to import open Finder windows as panes for your workspaces.</string>
     <key>NSDesktopFolderUsageDescription</key>
-    <string>KFinder needs access to your Desktop to list and manage files in panes that open it.</string>
+    <string>XFinder needs access to your Desktop to list and manage files in panes that open it.</string>
     <key>NSDocumentsFolderUsageDescription</key>
-    <string>KFinder needs access to your Documents to list and manage files in panes that open it.</string>
+    <string>XFinder needs access to your Documents to list and manage files in panes that open it.</string>
     <key>NSDownloadsFolderUsageDescription</key>
-    <string>KFinder needs access to your Downloads to list and manage files in panes that open it.</string>
+    <string>XFinder needs access to your Downloads to list and manage files in panes that open it.</string>
     <key>NSRemovableVolumesUsageDescription</key>
-    <string>KFinder needs access to removable volumes to browse files stored on them.</string>
+    <string>XFinder needs access to removable volumes to browse files stored on them.</string>
     <key>NSNetworkVolumesUsageDescription</key>
-    <string>KFinder needs access to network volumes to browse files stored on them.</string>
+    <string>XFinder needs access to network volumes to browse files stored on them.</string>
 </dict>
 </plist>
 PLIST

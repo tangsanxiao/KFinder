@@ -1,11 +1,11 @@
 import Foundation
 import Testing
 
-@testable import KFinder
+@testable import XFinder
 
 @Test func contentsHidesDotFilesAndSortsFoldersFirst() throws {
     let root = FileManager.default.temporaryDirectory
-        .appendingPathComponent("KFinderFB-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("XFinderFB-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
 

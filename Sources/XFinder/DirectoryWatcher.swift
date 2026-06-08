@@ -48,7 +48,7 @@ enum DirectoryWatcher {
                 return
             }
 
-            let queue = DispatchQueue(label: "com.kfinder.fsevents")
+            let queue = DispatchQueue(label: "com.xfinder.fsevents")
             FSEventStreamSetDispatchQueue(stream, queue)
             FSEventStreamStart(stream)
 

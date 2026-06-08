@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@testable import KFinder
+@testable import XFinder
 
 @MainActor
 @Test func applyLayoutSwitchesWithoutAddingOrRemovingPanes() {

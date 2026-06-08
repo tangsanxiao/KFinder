@@ -2,20 +2,20 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_NAME="KFinder"
+APP_NAME="XFinder"
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 OUT_DIR="$ROOT_DIR/release"
 
 cd "$ROOT_DIR"
 
-VERSION="${KFINDER_VERSION:-${GITHUB_REF_NAME:-}}"
+VERSION="${XFINDER_VERSION:-${GITHUB_REF_NAME:-}}"
 VERSION="${VERSION#v}"
 if [[ -z "$VERSION" ]]; then
-    VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//')"
+    VERSION="$(git describe --tags --exact-match 2>/dev/null | sed 's/^v//' || true)"
 fi
 
 if [[ -n "$VERSION" ]]; then
-    KFINDER_VERSION="$VERSION" "$ROOT_DIR/scripts/build-app.sh"
+    XFINDER_VERSION="$VERSION" "$ROOT_DIR/scripts/build-app.sh"
 else
     "$ROOT_DIR/scripts/build-app.sh"
 fi

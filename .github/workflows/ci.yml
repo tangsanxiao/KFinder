@@ -35,4 +35,4 @@ jobs:
         run: ./scripts/build-app.sh
 
       - name: Verify app binary exists
-        run: test -x dist/KFinder.app/Contents/MacOS/KFinder
+        run: test -x dist/XFinder.app/Contents/MacOS/XFinder

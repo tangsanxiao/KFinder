@@ -18,7 +18,7 @@ struct WorkspaceDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background {
-                    Color(nsColor: .windowBackgroundColor)
+                    Color(nsColor: .controlBackgroundColor)
                     WindowDragArea()
                         .frame(height: 44)
                 }
@@ -88,7 +88,7 @@ private struct FinderLikeToolbar: View {
         }
         .padding(.leading, isSidebarVisible ? 0 : 66)
         .frame(height: 44)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(Color(nsColor: .controlBackgroundColor))
         .onTapGesture(count: 2) {
             WindowZoomController.toggle()
         }
@@ -198,10 +198,10 @@ private struct MultiPaneBrowserView: View {
                 )
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .background(Color(nsColor: .controlBackgroundColor))
             } else {
                 paneLayout
-                    .background(Color(nsColor: .windowBackgroundColor))
+                    .background(Color(nsColor: .controlBackgroundColor))
                     .onAppear { correctStaleFocus(in: workspace.directories) }
                     .onChange(of: workspace.directories) { newDirectories in
                         clearPlaceholderSelection()
@@ -409,7 +409,7 @@ private struct PaneAddPlaceholder: View {
             // Greyed backdrop. Tapping it selects the slot (so a sidebar
             // bookmark/star can open into it); the dashed border turns solid
             // accent when selected.
-            Color(nsColor: .windowBackgroundColor)
+            Color(nsColor: .controlBackgroundColor)
             RoundedRectangle(cornerRadius: 10)
                 .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.06))
                 .overlay(
