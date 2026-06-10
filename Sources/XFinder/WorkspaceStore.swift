@@ -16,6 +16,7 @@ final class WorkspaceStore: ObservableObject {
 
     private let persistenceURL: URL
     private let starsURL: URL
+    private let paneLocationsURL: URL
     private let finderController = FinderController()
 
     /// - Parameter supportDirectory: base directory for persistence. Defaults to
@@ -29,6 +30,7 @@ final class WorkspaceStore: ObservableObject {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         persistenceURL = directory.appendingPathComponent("workspaces.json")
         starsURL = directory.appendingPathComponent("stars.json")
+        paneLocationsURL = directory.appendingPathComponent("pane-locations.json")
 
         if supportDirectory == nil {
             let legacyPersistenceURL =
@@ -43,6 +45,7 @@ final class WorkspaceStore: ObservableObject {
         }
         load()
         loadStars()
+        loadPaneLocations()
     }
 
     var selectedWorkspace: Workspace? {
@@ -113,6 +116,7 @@ final class WorkspaceStore: ObservableObject {
             selectedWorkspaceID = workspaces.first?.id
         }
         save()
+        savePaneLocations()
     }
 
     /// Switches the layout. Panes are NOT auto-created: when the layout wants
@@ -158,6 +162,7 @@ final class WorkspaceStore: ObservableObject {
             .map { DirectoryItem(name: $0.lastPathComponent.isEmpty ? $0.path : $0.lastPathComponent, path: $0.path) }
 
         workspace.directories.append(contentsOf: additions)
+        fitLayoutAfterAddingPanes(&workspace)
         updateSelectedWorkspace(workspace)
         statusMessage = "Added \(additions.count) folder\(additions.count == 1 ? "" : "s")"
     }
@@ -166,6 +171,7 @@ final class WorkspaceStore: ObservableObject {
         guard var workspace = selectedWorkspace else { return }
         workspace.directories.removeAll { $0.id == item.id }
         paneLocations[item.id] = nil
+        savePaneLocations()
         // Auto-fit the layout to the remaining pane count so closing a pane
         // re-flows the rest instead of leaving an empty placeholder cell.
         workspace.layout = WorkspaceLayout.fitting(paneCount: workspace.directories.count)
@@ -176,6 +182,21 @@ final class WorkspaceStore: ObservableObject {
         let path = url.path
         guard paneLocations[id] != path else { return }
         paneLocations[id] = path
+        savePaneLocations()
+    }
+
+    /// Pane navigation survives app restarts: locations are persisted alongside
+    /// the workspaces and pruned when their pane/workspace is deleted.
+    private func loadPaneLocations() {
+        guard let data = try? Data(contentsOf: paneLocationsURL),
+            let decoded = try? JSONDecoder().decode([UUID: String].self, from: data)
+        else { return }
+        paneLocations = decoded
+    }
+
+    private func savePaneLocations() {
+        guard let data = try? JSONEncoder.pretty.encode(paneLocations) else { return }
+        try? data.write(to: paneLocationsURL, options: .atomic)
     }
 
     func paneLocation(for id: UUID?) -> URL? {
@@ -227,6 +248,7 @@ final class WorkspaceStore: ObservableObject {
         guard var workspace = selectedWorkspace else { return nil }
         let item = DirectoryItem(name: title, path: url.path)
         workspace.directories.append(item)
+        fitLayoutAfterAddingPanes(&workspace)
         updateSelectedWorkspace(workspace)
         focusedPaneID = item.id
         statusMessage = "Opened \(title)"
@@ -244,6 +266,32 @@ final class WorkspaceStore: ObservableObject {
         } catch {
             lastError = error.localizedDescription
             statusMessage = "Could not open Terminal"
+        }
+    }
+
+    /// Opens a Terminal window at `url` running the interactive Claude Code
+    /// CLI — the "hand the directory to an agent" action. Uses AppleScript
+    /// (like Finder import) because `open -a Terminal` can't pass a command.
+    func openClaudeCode(at url: URL) {
+        let shellCommand = "cd " + ClaudeBridge.shellQuoted(url.path) + " && claude"
+        let escaped =
+            shellCommand
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let source = """
+            tell application "Terminal"
+                activate
+                do script "\(escaped)"
+            end tell
+            """
+        var errorInfo: NSDictionary?
+        guard let script = NSAppleScript(source: source) else { return }
+        script.executeAndReturnError(&errorInfo)
+        if let message = errorInfo?[NSAppleScript.errorMessage] as? String {
+            lastError = "无法打开 Claude Code：\(message)（首次使用需在弹窗中允许 XFinder 控制 Terminal）"
+            statusMessage = "Open Claude Code failed"
+        } else {
+            statusMessage = "Opened Claude Code at \(url.lastPathComponent)"
         }
     }
 
@@ -460,6 +508,17 @@ final class WorkspaceStore: ObservableObject {
             lastError = error.localizedDescription
             statusMessage = "Could not import Finder windows"
         }
+    }
+
+    /// Every pane-adding path must call this: when the pane count exceeds what
+    /// the current layout can show, the grid silently wraps panes into extra
+    /// rows the Layout control doesn't represent. Upgrades the layout to fit;
+    /// never downgrades, so a roomier layout keeps its "待添加" placeholders.
+    private func fitLayoutAfterAddingPanes(_ workspace: inout Workspace) {
+        guard let preferred = workspace.layout.preferredPaneCount,
+            workspace.directories.count > preferred
+        else { return }
+        workspace.layout = WorkspaceLayout.fitting(paneCount: workspace.directories.count)
     }
 
     private func ensureWorkspaceExists() {

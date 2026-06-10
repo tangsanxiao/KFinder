@@ -128,8 +128,12 @@ private struct FinderLikeToolbar: View {
         .buttonStyle(.borderless)
         .help("Layout and panes")
         .popover(isPresented: $isLayoutPopoverShown, arrowEdge: .bottom) {
+            let current = store.selectedWorkspace?.layout ?? workspace.layout
+            let paneCount = store.selectedWorkspace?.directories.count ?? workspace.directories.count
+
             VStack(alignment: .leading, spacing: 8) {
-                Text("Layout")
+                // Live state, so a layout/pane mismatch is visible at a glance.
+                Text(PaneGridGeometry.describe(layout: current, paneCount: paneCount))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -138,8 +142,17 @@ private struct FinderLikeToolbar: View {
                         store.applyLayout(layout)
                         isLayoutPopoverShown = false
                     } label: {
-                        Label(layout.title, systemImage: layout.systemImage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack {
+                            Label(layout.title, systemImage: layout.systemImage)
+                            Spacer()
+                            if layout == current {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.vertical, 4)
@@ -231,11 +244,7 @@ private struct MultiPaneBrowserView: View {
         // existing folders render as "待添加" (add-a-pane) placeholders.
         switch workspace.layout {
         case .single, .columns2, .columns3, .rows3, .grid:
-            gridPaneLayout(
-                directories,
-                columns: workspace.layout.gridColumns,
-                minCells: workspace.layout.preferredPaneCount ?? directories.count
-            )
+            gridPaneLayout(directories, layout: workspace.layout)
         case .mainAndStack:
             mainAndStackPaneLayout(directories)
         }
@@ -289,16 +298,14 @@ private struct MultiPaneBrowserView: View {
         }
     }
 
-    private func gridPaneLayout(_ directories: [DirectoryItem], columns: Int, minCells: Int) -> some View {
-        let cols = max(columns, 1)
-        // Round the cell count up to whole rows so every empty slot is a real
-        // (selectable) "待添加" placeholder — never a dead grey filler.
-        let base = max(directories.count, minCells)
-        let cellCount = Int((Double(base) / Double(cols)).rounded(.up)) * cols
-        let cells: [PaneCell] = (0..<max(cellCount, 1)).map { index in
+    private func gridPaneLayout(_ directories: [DirectoryItem], layout: WorkspaceLayout) -> some View {
+        // Geometry comes from PaneGridGeometry — the same source the Layout
+        // control describes — so the rendered grid can't drift from it.
+        let grid = PaneGridGeometry.grid(for: layout, paneCount: directories.count)
+        let cells: [PaneCell] = (0..<grid.cellCount).map { index in
             index < directories.count ? .pane(directories[index]) : .placeholder(index)
         }
-        let rows = chunked(cells, size: cols)
+        let rows = chunked(cells, size: grid.columns)
 
         return VStack(spacing: 1) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in

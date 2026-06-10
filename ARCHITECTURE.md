@@ -76,9 +76,29 @@ ContentView
 dot/hidden files and sorting folders-first. `BrowserPane` keeps inline expansion
 state and reloads expanded subfolders after file operations or FSEvents updates.
 `DisplayFormatters` turns dates/sizes into display strings (pure, injectable
-clock for testing).
+clock for testing). Directory reads run off the main thread via the async
+`contents` overload; panes guard concurrent reloads with a generation counter.
+
+## Git awareness & agent bridge
+
+- `GitStatusService` shells out to `git` (off-main) and returns an immutable
+  `GitDirectorySnapshot`: branch, per-path statuses (row badges), recent
+  commits (the toolbar's project status card). Porcelain/log parsing is pure
+  and unit-tested; a temp-repo integration test covers the real CLI.
+- `ClaudeBridge` runs the locally installed Claude Code CLI headless
+  (`claude -p`) in a pane's directory — preset analysis, free-form ask, and
+  selection ask all go through one editable-question sheet. "Open in Claude
+  Code" launches the interactive CLI in Terminal via AppleScript. Deliberately
+  no API-key handling in-app: the CLI owns auth, tools, and context.
+- `ProjectStatusViews` holds the status card popover and the ask sheet.
+- `PaneGridGeometry` is the single source of truth for the pane grid's
+  rows×columns; both the rendered grid and the Layout control's live
+  description read it, so they cannot disagree.
 
 ## Persistence
+
+- Pane locations → `pane-locations.json` next to the workspaces file, pruned
+  when panes/workspaces are removed.
 
 - Workspaces → JSON in `~/Library/Application Support/XFinder/` (migrated from a
   legacy `FinderHub` directory if present).

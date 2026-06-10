@@ -47,9 +47,33 @@ struct FileListColumnWidths: Equatable {
     static let minKind: CGFloat = 58
 }
 
+/// Small letter chip after the filename showing the file's git state.
+struct GitStatusBadge: View {
+    let status: FileGitStatus
+
+    var body: some View {
+        Text(status.badgeLetter)
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .foregroundStyle(color)
+            .frame(minWidth: 10)
+            .accessibilityLabel("Git status \(status.badgeLetter)")
+    }
+
+    private var color: Color {
+        switch status {
+        case .modified: .orange
+        case .untracked, .added: .green
+        case .deleted, .conflicted: .red
+        case .renamed: .purple
+        case .containsChanges: .secondary
+        }
+    }
+}
+
 struct FileRow: View {
     let file: BrowserFileItem
     let depth: Int
+    let gitStatus: FileGitStatus?
     let isExpanded: Bool
     let isSelected: Bool
     let isActivePane: Bool
@@ -69,6 +93,7 @@ struct FileRow: View {
     let reveal: () -> Void
     let trash: () -> Void
     let compress: () -> Void
+    let askClaude: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
     @FocusState private var isRenameFieldFocused: Bool
@@ -93,6 +118,10 @@ struct FileRow: View {
                 FileIconView(url: file.url, size: 16)
 
                 nameContent
+
+                if let gitStatus {
+                    GitStatusBadge(status: gitStatus)
+                }
             }
             .padding(.leading, CGFloat(depth) * 18)
             .frame(width: columnWidths.name, alignment: .leading)
@@ -134,6 +163,7 @@ struct FileRow: View {
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
             Button("Compress") { compress() }
+            Button("Ask Claude About Selection") { askClaude() }
             Button("Move to Trash", role: .destructive) { trash() }
 
             if !destinations.isEmpty {

@@ -38,6 +38,25 @@ import Testing
     #expect(visibleNames == [".claude", ".env", "visible.txt"])
 }
 
+@Test func asyncContentsMatchesSyncContents() async throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderFB-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try FileManager.default.createDirectory(at: root.appendingPathComponent("Beta"), withIntermediateDirectories: true)
+    try "x".write(to: root.appendingPathComponent("alpha.txt"), atomically: true, encoding: .utf8)
+    try "x".write(to: root.appendingPathComponent(".hidden"), atomically: true, encoding: .utf8)
+
+    // The synchronous closure forces overload resolution to the sync variant
+    // (an async context would otherwise pick the async overload for both).
+    let sync: [BrowserFileItem] = try { try FileBrowserService.contents(of: root, includingHidden: true) }()
+    let async: [BrowserFileItem] = try await FileBrowserService.contents(of: root, includingHidden: true)
+
+    #expect(async == sync)
+    #expect(async.count == 3)
+}
+
 @Test func appPackagesCanBrowseInlineOnlyInHiddenMode() throws {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("XFinderFB-\(UUID().uuidString)", isDirectory: true)

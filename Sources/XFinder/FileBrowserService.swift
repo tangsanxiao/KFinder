@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-struct BrowserFileItem: Identifiable, Hashable {
+struct BrowserFileItem: Identifiable, Hashable, Sendable {
     let id: String
     let url: URL
     let name: String
@@ -29,6 +29,15 @@ struct BrowserFileItem: Identifiable, Hashable {
 }
 
 enum FileBrowserService {
+    /// Async variant that reads the directory off the calling actor so large
+    /// folders never block the main thread. Views must use this one; the sync
+    /// version exists for tests and non-UI callers.
+    static func contents(of url: URL, includingHidden: Bool = false) async throws -> [BrowserFileItem] {
+        try await Task.detached(priority: .userInitiated) {
+            try contents(of: url, includingHidden: includingHidden)
+        }.value
+    }
+
     static func contents(of url: URL, includingHidden: Bool = false) throws -> [BrowserFileItem] {
         let keys: Set<URLResourceKey> = [
             .contentModificationDateKey,

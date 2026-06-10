@@ -27,6 +27,24 @@ struct BrowserPane: View {
     @State private var toolbarTooltip: String?
     @State private var pendingSelectionURL: URL?
     @State private var showsHiddenItems = false
+    @State private var showsFilter = false
+    @State private var filterText = ""
+    @FocusState private var filterFieldFocused: Bool
+    @State private var showsGoToPath = false
+    @State private var goToPathText = ""
+    @State private var keyMonitor: Any?
+    @State private var gitSnapshot: GitDirectorySnapshot?
+    @State private var showsProjectCard = false
+    @State private var showsAnalysis = false
+    @State private var analysisRunning = false
+    @State private var analysisText: String?
+    @State private var analysisError: String?
+    @State private var analysisTask: Task<Void, Never>?
+    @State private var analysisQuestion = ""
+    // Reloads run async (directory IO happens off the main thread); the
+    // generation counter drops results from a reload that another, newer
+    // reload has superseded so a slow folder can't overwrite a fast one.
+    @State private var loadGeneration = 0
 
     init(root: DirectoryItem, isFocused: Bool, viewMode: BrowserViewMode, onFocus: @escaping () -> Void) {
         self.root = root
@@ -41,6 +59,8 @@ struct BrowserPane: View {
             paneToolbar
                 .zIndex(2)
             Divider()
+                .zIndex(2)
+            filterBar
                 .zIndex(2)
             if viewMode != .columns {
                 tableHeader
@@ -58,6 +78,13 @@ struct BrowserPane: View {
                     .clipped()
                     .contentShape(Rectangle())
                     .contextMenu { emptyAreaMenu }
+                    // Double-click an empty area to go up one directory. Rows
+                    // recognize their own double-tap (open), which takes
+                    // precedence, so this only fires on blank space.
+                    .onTapGesture(count: 2) {
+                        onFocus()
+                        goUp()
+                    }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
@@ -77,17 +104,40 @@ struct BrowserPane: View {
             if let saved = store.paneLocation(for: root.id), saved != currentURL {
                 currentURL = saved
             }
+            // Keyboard navigation: a local monitor per pane; only the focused
+            // pane consumes events, all others pass them through.
+            keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                handleKeyDown(event)
+            }
+        }
+        .onDisappear {
+            if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+            keyMonitor = nil
+        }
+        .sheet(isPresented: $showsGoToPath) {
+            goToPathSheet
+        }
+        .sheet(isPresented: $showsAnalysis, onDismiss: { cancelAnalysis() }) {
+            ClaudeAnalysisSheet(
+                directoryName: currentURL.lastPathComponent,
+                question: $analysisQuestion,
+                isRunning: analysisRunning,
+                resultText: analysisText,
+                errorText: analysisError,
+                onRun: { runAnalysis() },
+                onClose: { showsAnalysis = false }
+            )
         }
         .task(id: currentURL) {
-            reload()
+            await reload()
             // Auto-refresh when the directory (or an expanded subfolder) changes
             // on disk — files added/removed/renamed or their contents edited.
             for await _ in DirectoryWatcher.changes(of: currentURL) {
-                reloadPreservingExpansion()
+                await reloadPreservingExpansion()
             }
         }
         .onChange(of: store.fileOperationRevision) { _ in
-            reloadPreservingExpansion(selecting: pendingSelectionURL)
+            scheduleReload(selecting: pendingSelectionURL)
         }
         .onChange(of: root.path) { newPath in
             currentURL = URL(fileURLWithPath: newPath)
@@ -148,6 +198,8 @@ struct BrowserPane: View {
                             FileRow(
                                 file: row.file,
                                 depth: row.depth,
+                                gitStatus: gitSnapshot?.status(
+                                    forPath: row.file.id, isDirectory: row.file.isDirectory),
                                 isExpanded: expandedFolders.contains(row.file.id),
                                 isSelected: selection.contains(row.file.id),
                                 isActivePane: isFocused,
@@ -179,16 +231,17 @@ struct BrowserPane: View {
                                 reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
                                 trash: {
                                     store.moveToTrash(row.file.url)
-                                    reloadPreservingExpansion()
+                                    scheduleReload()
                                 },
                                 compress: { compress(row.file) },
+                                askClaude: { askClaudeAboutSelection(row.file) },
                                 copyTo: { destination in
                                     store.copy(row.file.url, to: destination)
-                                    reloadPreservingExpansion()
+                                    scheduleReload()
                                 },
                                 moveTo: { destination in
                                     store.move(row.file.url, to: destination)
-                                    reloadPreservingExpansion()
+                                    scheduleReload()
                                 }
                             )
                             .frame(width: proxy.size.width, alignment: .leading)
@@ -210,6 +263,174 @@ struct BrowserPane: View {
             }
         case .columns:
             columnContent
+        }
+    }
+
+    @ViewBuilder
+    private var filterBar: some View {
+        if showsFilter {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("过滤当前目录", text: $filterText)
+                    .textFieldStyle(.plain)
+                    .focused($filterFieldFocused)
+                    .onExitCommand { dismissFilter() }
+                if !filterText.isEmpty {
+                    Button {
+                        filterText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                }
+                Button("完成") { dismissFilter() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 12))
+            .padding(.horizontal, 12)
+            .frame(height: 28)
+            .background(Color(nsColor: .controlBackgroundColor))
+            Divider()
+        }
+    }
+
+    private var goToPathSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("前往文件夹")
+                .font(.headline)
+            TextField("输入路径，如 ~/Documents", text: $goToPathText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 380)
+                .onSubmit { goToEnteredPath() }
+            HStack {
+                Spacer()
+                Button("取消") {
+                    showsGoToPath = false
+                    goToPathText = ""
+                }
+                Button("前往") { goToEnteredPath() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+    }
+
+    private func dismissFilter() {
+        filterText = ""
+        showsFilter = false
+        filterFieldFocused = false
+    }
+
+    private func goToEnteredPath() {
+        let expanded = (goToPathText as NSString).expandingTildeInPath
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory), isDirectory.boolValue else {
+            store.lastError = "路径不存在或不是文件夹：\(goToPathText)"
+            return
+        }
+        showsGoToPath = false
+        goToPathText = ""
+        navigate(to: URL(fileURLWithPath: expanded))
+    }
+
+    // MARK: - Keyboard navigation
+
+    /// Handles a key event for this pane; returns nil to consume it. Events are
+    /// passed through while unfocused, renaming, or typing in any text field.
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard isFocused, renamingFileID == nil, showsGoToPath == false, showsAnalysis == false else { return event }
+        if NSApp.keyWindow?.firstResponder is NSTextView { return event }
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        switch event.keyCode {
+        case 125:  // Down
+            if modifiers.contains(.command) {
+                openSingleSelection()
+            } else {
+                moveSelection(forward: true, extend: modifiers.contains(.shift))
+            }
+            return nil
+        case 126:  // Up
+            if modifiers.contains(.command) {
+                goUp()
+            } else {
+                moveSelection(forward: false, extend: modifiers.contains(.shift))
+            }
+            return nil
+        case 124:  // Right — expand the selected folder inline (list view)
+            setSelectedFolderExpansion(true)
+            return nil
+        case 123:  // Left — collapse it
+            setSelectedFolderExpansion(false)
+            return nil
+        case 36:  // Return — rename, Finder-style
+            if let id = singleSelection, let file = loadedFiles.first(where: { $0.id == id }) {
+                beginRename(file)
+            }
+            return nil
+        case 51 where modifiers.contains(.command):  // Cmd+Delete — trash
+            trashSelection()
+            return nil
+        case 5 where modifiers.contains(.command) && modifiers.contains(.shift):  // Cmd+Shift+G
+            showsGoToPath = true
+            return nil
+        case 3 where modifiers == [.command]:  // Cmd+F — filter
+            showsFilter = true
+            filterFieldFocused = true
+            return nil
+        case 53:  // Esc — close the filter
+            guard showsFilter else { return event }
+            dismissFilter()
+            return nil
+        default:
+            return event
+        }
+    }
+
+    private func moveSelection(forward: Bool, extend: Bool) {
+        let rows = flatRows
+        guard
+            let targetID = PaneSelectionLogic.stepTarget(
+                ids: rows.map(\.file.id),
+                selection: selection,
+                anchor: selectionAnchor,
+                forward: forward
+            ),
+            let target = rows.first(where: { $0.file.id == targetID })?.file
+        else { return }
+        if extend {
+            extendSelection(to: target)
+        } else {
+            selectOnly(target)
+        }
+    }
+
+    private func openSingleSelection() {
+        guard let id = singleSelection, let file = loadedFiles.first(where: { $0.id == id }) else { return }
+        open(file)
+    }
+
+    private func trashSelection() {
+        let targets = flatRows.map(\.file).filter { selection.contains($0.id) }
+        guard !targets.isEmpty else { return }
+        for target in targets {
+            store.moveToTrash(target.url)
+        }
+        clearSelection()
+        scheduleReload()
+    }
+
+    private func setSelectedFolderExpansion(_ expand: Bool) {
+        guard viewMode == .list, let id = singleSelection,
+            let file = loadedFiles.first(where: { $0.id == id }), canBrowseInline(file)
+        else { return }
+        if expand, !expandedFolders.contains(file.id) {
+            toggleExpansion(file)
+        } else if !expand {
+            expandedFolders.remove(file.id)
         }
     }
 
@@ -247,22 +468,96 @@ struct BrowserPane: View {
         } label: {
             Label("Open Terminal", systemImage: "terminal")
         }
+
+        Divider()
+
+        Button {
+            onFocus()
+            startAnalysis(question: ClaudeBridge.analysisPrompt, autoRun: true)
+        } label: {
+            Label("Analyze with Claude", systemImage: "sparkles")
+        }
+
+        Button {
+            onFocus()
+            startAnalysis(question: "", autoRun: false)
+        } label: {
+            Label("Ask Claude…", systemImage: "questionmark.bubble")
+        }
+
+        Button {
+            onFocus()
+            store.openClaudeCode(at: currentURL)
+        } label: {
+            Label("Open in Claude Code", systemImage: "apple.terminal")
+        }
+    }
+
+    /// Opens the Ask Claude sheet. With `autoRun` the question fires
+    /// immediately (preset analysis / selection ask); otherwise the sheet
+    /// waits for the user to type. Dismissing cancels the CLI process.
+    private func startAnalysis(question: String, autoRun: Bool) {
+        analysisQuestion = question
+        analysisText = nil
+        analysisError = nil
+        showsAnalysis = true
+        if autoRun { runAnalysis() }
+    }
+
+    private func runAnalysis() {
+        analysisTask?.cancel()
+        analysisText = nil
+        analysisError = nil
+        analysisRunning = true
+        analysisTask = Task {
+            do {
+                let text = try await ClaudeBridge.analyzeProject(at: currentURL, prompt: analysisQuestion)
+                analysisText = text.isEmpty ? "（Claude 没有返回内容）" : text
+            } catch is CancellationError {
+                // Sheet dismissed — nothing to show.
+            } catch {
+                analysisError = error.localizedDescription
+            }
+            analysisRunning = false
+        }
+    }
+
+    private func askClaudeAboutSelection(_ file: BrowserFileItem) {
+        onFocus()
+        let targets = actionTargets(for: file)
+        guard !targets.isEmpty else { return }
+        let basePath = currentURL.path.hasSuffix("/") ? currentURL.path : currentURL.path + "/"
+        let relativePaths = targets.map { target in
+            target.url.path.hasPrefix(basePath)
+                ? String(target.url.path.dropFirst(basePath.count)) : target.url.path
+        }
+        startAnalysis(question: ClaudeBridge.selectionPrompt(for: relativePaths), autoRun: true)
+    }
+
+    private func cancelAnalysis() {
+        analysisTask?.cancel()
+        analysisTask = nil
+        analysisRunning = false
     }
 
     private func createFolder() {
         onFocus()
         guard let url = store.createFolder(in: currentURL) else { return }
-        reloadPreservingExpansion()
-        guard let item = selectLoadedFile(at: url) else { return }
-        selectOnly(item)
-        beginRename(item)
+        Task {
+            await reloadPreservingExpansion()
+            guard let item = selectLoadedFile(at: url) else { return }
+            selectOnly(item)
+            beginRename(item)
+        }
     }
 
     private func createMarkdownFile() {
         onFocus()
         guard let url = store.createMarkdownFile(in: currentURL) else { return }
-        reloadPreservingExpansion()
-        _ = selectLoadedFile(at: url)
+        Task {
+            await reloadPreservingExpansion()
+            _ = selectLoadedFile(at: url)
+        }
     }
 
     private var columnContent: some View {
@@ -349,6 +644,37 @@ struct BrowserPane: View {
 
     private var trailingActions: some View {
         HStack(spacing: 8) {
+            if gitSnapshot != nil {
+                PaneToolbarActionButton(
+                    systemImage: "arrow.triangle.branch",
+                    accessibilityLabel: "Project Status",
+                    tooltip: "项目状态（git）",
+                    hoveredTooltip: $toolbarTooltip
+                ) {
+                    onFocus()
+                    showsProjectCard = true
+                }
+                .popover(isPresented: $showsProjectCard, arrowEdge: .bottom) {
+                    if let gitSnapshot {
+                        ProjectStatusCard(
+                            snapshot: gitSnapshot,
+                            onAnalyze: {
+                                showsProjectCard = false
+                                startAnalysis(question: ClaudeBridge.analysisPrompt, autoRun: true)
+                            },
+                            onOpenClaudeCode: {
+                                showsProjectCard = false
+                                store.openClaudeCode(at: currentURL)
+                            },
+                            onOpenTerminal: {
+                                showsProjectCard = false
+                                store.openTerminal(at: currentURL)
+                            }
+                        )
+                    }
+                }
+            }
+
             PaneToolbarActionButton(
                 systemImage: store.isStarred(currentURL) ? "star.fill" : "star",
                 accessibilityLabel: "Star Folder",
@@ -367,7 +693,7 @@ struct BrowserPane: View {
             ) {
                 onFocus()
                 showsHiddenItems.toggle()
-                reload()
+                Task { await reload() }
             }
 
             PaneToolbarActionButton(
@@ -603,7 +929,7 @@ struct BrowserPane: View {
     }
 
     private var sortedItems: [BrowserFileItem] {
-        sorted(items)
+        sorted(PaneFilterLogic.filter(items, query: filterText))
     }
 
     private var selectedFolderChildren: [BrowserFileItem]? {
@@ -643,15 +969,15 @@ struct BrowserPane: View {
                     reveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) },
                     trash: {
                         store.moveToTrash(file.url)
-                        reloadPreservingExpansion()
+                        scheduleReload()
                     },
                     copyTo: { destination in
                         store.copy(file.url, to: destination)
-                        reloadPreservingExpansion()
+                        scheduleReload()
                     },
                     moveTo: { destination in
                         store.move(file.url, to: destination)
-                        reloadPreservingExpansion()
+                        scheduleReload()
                     }
                 )
             }
@@ -660,37 +986,67 @@ struct BrowserPane: View {
         .frame(maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func reload() {
+    /// Sync-context entry point for the async reloads (button actions, change
+    /// handlers). Fire-and-forget; staleness is handled by `loadGeneration`.
+    private func scheduleReload(selecting targetURL: URL? = nil) {
+        Task { await reloadPreservingExpansion(selecting: targetURL) }
+    }
+
+    private func reload() async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        store.updatePaneLocation(id: root.id, url: currentURL)
         do {
-            store.updatePaneLocation(id: root.id, url: currentURL)
-            items = try FileBrowserService.contents(of: currentURL, includingHidden: showsHiddenItems)
+            let loaded = try await FileBrowserService.contents(of: currentURL, includingHidden: showsHiddenItems)
+            guard generation == loadGeneration else { return }
+            items = loaded
             expandedFolders.removeAll()
             expandedContents.removeAll()
             cancelPendingRename()
             renamingFileID = nil
             errorMessage = nil
+            await refreshGitSnapshot(generation: generation)
         } catch {
+            guard generation == loadGeneration else { return }
             items = []
             errorMessage = error.localizedDescription
         }
     }
 
-    private func reloadPreservingExpansion(selecting targetURL: URL? = nil) {
+    /// Fetched after the file list is already on screen, so git never delays
+    /// showing files; the generation guard drops stale results.
+    private func refreshGitSnapshot(generation: Int) async {
+        let snapshot = await GitStatusService.snapshot(for: currentURL)
+        guard generation == loadGeneration else { return }
+        gitSnapshot = snapshot
+    }
+
+    private func reloadPreservingExpansion(selecting targetURL: URL? = nil) async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        store.updatePaneLocation(id: root.id, url: currentURL)
         do {
-            store.updatePaneLocation(id: root.id, url: currentURL)
-            items = try FileBrowserService.contents(of: currentURL, includingHidden: showsHiddenItems)
+            let loaded = try await FileBrowserService.contents(of: currentURL, includingHidden: showsHiddenItems)
+            var reloadedContents: [String: [BrowserFileItem]] = [:]
             for folderID in expandedFolders {
                 let folderURL = URL(fileURLWithPath: folderID)
-                expandedContents[folderID] = try? FileBrowserService.contents(
+                reloadedContents[folderID] = try? await FileBrowserService.contents(
                     of: folderURL,
                     includingHidden: showsHiddenItems
                 )
+            }
+            guard generation == loadGeneration else { return }
+            items = loaded
+            for (folderID, contents) in reloadedContents {
+                expandedContents[folderID] = contents
             }
             if let targetURL, selectLoadedFile(at: targetURL) != nil {
                 pendingSelectionURL = nil
             }
             errorMessage = nil
+            await refreshGitSnapshot(generation: generation)
         } catch {
+            guard generation == loadGeneration else { return }
             items = []
             errorMessage = error.localizedDescription
         }
@@ -704,7 +1060,8 @@ struct BrowserPane: View {
         source.flatMap { file -> [FileTreeRow] in
             var rows = [FileTreeRow(file: file, depth: depth)]
             if canBrowseInline(file), expandedFolders.contains(file.id), let children = expandedContents[file.id] {
-                rows.append(contentsOf: flatten(sorted(children), depth: depth + 1))
+                rows.append(
+                    contentsOf: flatten(sorted(PaneFilterLogic.filter(children, query: filterText)), depth: depth + 1))
             }
             return rows
         }
@@ -760,11 +1117,15 @@ struct BrowserPane: View {
             return
         }
 
-        do {
-            expandedContents[file.id] = try FileBrowserService.contents(of: file.url, includingHidden: showsHiddenItems)
-            expandedFolders.insert(file.id)
-        } catch {
-            store.lastError = error.localizedDescription
+        Task {
+            do {
+                let children = try await FileBrowserService.contents(
+                    of: file.url, includingHidden: showsHiddenItems)
+                expandedContents[file.id] = children
+                expandedFolders.insert(file.id)
+            } catch {
+                store.lastError = error.localizedDescription
+            }
         }
     }
 
@@ -777,6 +1138,9 @@ struct BrowserPane: View {
     private func clearSelection() {
         selection = []
         selectionAnchor = nil
+        // Navigation calls this; a stale filter from the previous folder would
+        // silently hide files in the new one.
+        filterText = ""
     }
 
     /// Routes a row click through the active modifier keys: Shift extends a
@@ -854,9 +1218,13 @@ struct BrowserPane: View {
 
     private func prepareColumnDrillDown(_ file: BrowserFileItem) {
         guard viewMode == .columns, canBrowseInline(file) else { return }
-        if expandedContents[file.id] == nil {
-            expandedContents[file.id] = try? FileBrowserService.contents(
+        guard expandedContents[file.id] == nil else { return }
+        Task {
+            let children = try? await FileBrowserService.contents(
                 of: file.url, includingHidden: showsHiddenItems)
+            if expandedContents[file.id] == nil {
+                expandedContents[file.id] = children
+            }
         }
     }
 
@@ -933,7 +1301,7 @@ struct BrowserPane: View {
         cancelPendingRename()
         store.renameFile(file.url, to: renameDraft)
         renamingFileID = nil
-        reloadPreservingExpansion()
+        scheduleReload()
     }
 
     private func cancelRename() {
@@ -943,17 +1311,19 @@ struct BrowserPane: View {
     }
 
     private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) })
-        else {
-            return false
-        }
+        // Move every dropped file, not just the first provider — a multi-file
+        // drag delivers one NSItemProvider per file.
+        let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
+        guard !fileProviders.isEmpty else { return false }
 
-        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            guard let sourceURL = droppedFileURL(from: item) else { return }
-            Task { @MainActor in
-                onFocus()
-                store.move(sourceURL, toDirectory: currentURL)
-                reloadPreservingExpansion()
+        for provider in fileProviders {
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                guard let sourceURL = droppedFileURL(from: item) else { return }
+                Task { @MainActor in
+                    onFocus()
+                    store.move(sourceURL, toDirectory: currentURL)
+                    scheduleReload()
+                }
             }
         }
         return true
@@ -1008,6 +1378,9 @@ struct BrowserPane: View {
     }
 
     private func goUp() {
+        // Guard here (not just at the disabled toolbar button) because the
+        // keyboard shortcut and empty-area double-click also land here.
+        guard currentURL.path != "/" else { return }
         navigate(to: currentURL.deletingLastPathComponent())
     }
 

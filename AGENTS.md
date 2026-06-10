@@ -39,6 +39,22 @@
 
 ## UI 约定
 
+- **情况**：视图代码（`@MainActor`）里直接同步调用 `FileBrowserService.contents` / `FileManager` 读目录。
+  **要求**：视图里的目录读取一律走 `FileBrowserService.contents` 的 **async 重载**（内部 `Task.detached` 下沉到后台线程）；并发 reload 用 generation 计数丢弃过期结果，防止慢目录覆盖新结果。
+  **原因**：同步 IO 跑在主线程，遇到大目录（node_modules、大 Downloads）整个 UI 卡死，与"高性能"目标直接冲突。
+
+- **情况**：`onDrop` 收到多个文件（每个文件一个 `NSItemProvider`）。
+  **要求**：处理拖放必须遍历**所有** provider，不能 `providers.first(where:)` 只取第一个。
+  **原因**：曾导致多选拖放只移动了一个文件，其余静默丢弃，用户以为全移了。
+
+- **情况**：layout 和 directories（面板列表）是两份独立状态，曾经只在关面板时对齐。
+  **要求**：任何**新增面板**的代码路径（`openInNewPane`、`addDirectories`、未来的导入等）都必须经过 `fitLayoutAfterAddingPanes`：面板数超过 `layout.preferredPaneCount` 时自动升档，但不降档（保留用户选的大布局和占位符）。
+  **原因**：曾导致 Single 布局下加第二个面板时被静默挤成上下两行，顶部 Layout 图标却没变——面板与布局状态对不齐。
+
+- **情况**：键盘快捷键经由每个面板安装的 `NSEvent.addLocalMonitorForEvents` 处理（见 `BrowserPaneView.handleKeyDown`）。
+  **要求**：handler 必须先做三重放行检查（非聚焦面板 / 正在重命名 / `firstResponder is NSTextView`）再消费事件；新增快捷键加进 `handleKeyDown` 的 switch，不要再装新的 monitor。
+  **原因**：local monitor 是 app 级的，每个面板都会收到所有按键；不检查焦点会让多个面板同时响应，不检查文本输入会吞掉用户在 TextField 里的打字。
+
 - **情况**：列表斑马纹曾经钉在视口上，滚动时与行错位。
   **要求**：交替底色必须画在每一行内（随内容滚动），空白区用受视口高度限制的 `ListStripeFiller` 填充；行高/选中块/斑马纹统一读 `FileRowMetrics`，不要写死。
   **原因**：钉视口的背景层不随 `ScrollView` 滚动，必然错位；分散的魔法数字会让几处对不齐。

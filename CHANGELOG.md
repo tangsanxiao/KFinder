@@ -5,6 +5,19 @@ All notable changes to XFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- Git awareness: when a pane sits inside a git repo, list rows show a status badge after the filename (M modified, U untracked, A added, D deleted, R renamed, ! conflicted; folders get a • when their contents changed). Status loads on a background thread after the file list renders, so git never delays browsing.
+- Project status card: a branch button in the pane toolbar (repos only) pops a card with the current branch, uncommitted-change count, and the last 5 commits, plus "用 Claude 分析" and "打开终端" actions.
+- Claude Code bridge (all entry points English-labelled, no API keys stored — the CLI owns auth):
+  - "Analyze with Claude" (status card / empty-area right-click) runs a preset project-status prompt via headless `claude -p`.
+  - "Ask Claude…" opens the same sheet with an empty, editable question; every run is re-runnable with an edited question.
+  - "Ask Claude About Selection" (file right-click) prefills the question with the selected files' relative paths and runs.
+  - "Open in Claude Code" (status card / empty-area right-click) opens a Terminal window running the interactive `claude` CLI at the pane's directory (AppleScript; first use prompts for Terminal automation permission).
+- The Layout popover now shows the live state ("3 面板 · Three Columns", with real rows×columns when panes overflow the preset) and a checkmark on the current layout; grid geometry is computed by one shared `PaneGridGeometry` so the control can never drift from what the panes render.
+- Keyboard navigation in the focused pane: ↑/↓ move the selection (Shift extends), →/← expand/collapse the selected folder inline, Return renames, Cmd+↓ opens, Cmd+↑ goes to the parent folder, Cmd+Delete moves the selection to Trash. Keys pass through while renaming or typing in any text field.
+- Cmd+Shift+G "Go to Folder": type a path (with `~` expansion) to jump the focused pane there.
+- Cmd+F per-pane filter bar: case-insensitive name filtering of the current directory (and expanded subfolders); Esc or 完成 closes it, and the filter clears automatically on navigation.
+- Double-click an empty pane area to go up one directory (rows keep their own double-click-to-open).
+- Pane locations persist across app restarts (`pane-locations.json`); entries are pruned when a pane or workspace is removed.
 - Per-pane hidden mode in the pane toolbar: show/hide dotfiles and hidden folders, and browse app package contents when enabled. Hidden mode is off by default.
 - Renamed the project, SwiftPM package, app bundle, binary, resources, CI paths, release artifacts, and documentation to XFinder.
 - "New MD" in the pane empty-area right-click menu — creates `New.md`, then `New 1.md`, `New 2.md`, etc. on name collisions.
@@ -39,6 +52,9 @@ All notable changes to XFinder are recorded here. Newest first.
 - Pane layout uses flexible stacks instead of absolute frames; panes fill their grid cells evenly.
 
 ### Fixed
+- Adding a pane now upgrades the workspace layout when the pane count exceeds what the layout can show (e.g. a second pane in Single no longer stacks into an unrepresented extra row). Roomier layouts keep their placeholders — the layout only auto-upgrades, mirroring the existing auto-fit on pane close.
+- Directory reads no longer block the main thread: pane reloads, folder expansion, and column drill-down load contents on a background thread (large folders such as `node_modules` no longer freeze the UI). Overlapping reloads are generation-guarded so a slow folder can't overwrite a newer result.
+- Dropping multiple files onto a pane now moves all of them — previously only the first dropped file was moved and the rest were silently ignored.
 - Moving a file to Trash from the context menu no longer collapses expanded folders in the current pane.
 - Deeply expanded list rows no longer let long filenames overflow into the Modified column.
 - Focus no longer jumps to the first pane after filling a placeholder from the sidebar. Root cause: a method called from `.onChange(of:)` read `self`'s stale (pre-update) directories, so the just-added pane looked "missing" and focus was reset. Focus is now a single source of truth in the store and `onChange` uses the new value.

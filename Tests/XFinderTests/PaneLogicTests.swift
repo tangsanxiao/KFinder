@@ -1,0 +1,60 @@
+import Foundation
+import Testing
+
+@testable import XFinder
+
+// MARK: - Keyboard selection stepping
+
+@Test func stepTargetReturnsNilForEmptyRows() {
+    #expect(PaneSelectionLogic.stepTarget(ids: [], selection: [], anchor: nil, forward: true) == nil)
+}
+
+@Test func stepTargetWithoutSelectionPicksFirstOrLast() {
+    let ids = ["a", "b", "c"]
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: [], anchor: nil, forward: true) == "a")
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: [], anchor: nil, forward: false) == "c")
+}
+
+@Test func stepTargetMovesFromAnchor() {
+    let ids = ["a", "b", "c", "d"]
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: ["b"], anchor: "b", forward: true) == "c")
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: ["b"], anchor: "b", forward: false) == "a")
+}
+
+@Test func stepTargetClampsAtEnds() {
+    let ids = ["a", "b"]
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: ["b"], anchor: "b", forward: true) == "b")
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: ["a"], anchor: "a", forward: false) == "a")
+}
+
+@Test func stepTargetWithMultiSelectionUsesExtremeWhenAnchorMissing() {
+    let ids = ["a", "b", "c", "d"]
+    // Anchor not part of the rows anymore (e.g. filtered away): fall back to
+    // the outermost selected row in the step direction.
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: ["a", "c"], anchor: nil, forward: true) == "d")
+    #expect(PaneSelectionLogic.stepTarget(ids: ids, selection: ["b", "d"], anchor: nil, forward: false) == "a")
+}
+
+// MARK: - Filter
+
+private func makeItems(_ names: [String], in root: URL) throws -> [BrowserFileItem] {
+    for name in names {
+        try "x".write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8)
+    }
+    return try FileBrowserService.contents(of: root)
+}
+
+@Test func filterMatchesCaseInsensitiveAndTrimsWhitespace() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderPL-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let items = try makeItems(["Alpha.txt", "beta.md", "Gamma.txt"], in: root)
+
+    #expect(PaneFilterLogic.filter(items, query: "").map(\.name) == ["Alpha.txt", "beta.md", "Gamma.txt"])
+    #expect(PaneFilterLogic.filter(items, query: "   ").map(\.name) == ["Alpha.txt", "beta.md", "Gamma.txt"])
+    #expect(PaneFilterLogic.filter(items, query: "ALPHA").map(\.name) == ["Alpha.txt"])
+    #expect(PaneFilterLogic.filter(items, query: " txt ").map(\.name) == ["Alpha.txt", "Gamma.txt"])
+    #expect(PaneFilterLogic.filter(items, query: "zzz").isEmpty)
+}
