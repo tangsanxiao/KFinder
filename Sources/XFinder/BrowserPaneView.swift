@@ -6,6 +6,7 @@ struct BrowserPane: View {
     let root: DirectoryItem
     let isFocused: Bool
     let viewMode: BrowserViewMode
+    let onViewModeChange: (BrowserViewMode) -> Void
     let onFocus: () -> Void
 
     @State private var currentURL: URL
@@ -24,7 +25,7 @@ struct BrowserPane: View {
     @State private var columnWidths = FileListColumnWidths()
     @State private var resizeStartWidths: FileListColumnWidths?
     @State private var errorMessage: String?
-    @State private var toolbarTooltip: String?
+    @State private var isHoveringViewMode = false
     @State private var pendingSelectionURL: URL?
     @State private var showsHiddenItems = false
     @State private var showsFilter = false
@@ -46,10 +47,17 @@ struct BrowserPane: View {
     // reload has superseded so a slow folder can't overwrite a fast one.
     @State private var loadGeneration = 0
 
-    init(root: DirectoryItem, isFocused: Bool, viewMode: BrowserViewMode, onFocus: @escaping () -> Void) {
+    init(
+        root: DirectoryItem,
+        isFocused: Bool,
+        viewMode: BrowserViewMode,
+        onViewModeChange: @escaping (BrowserViewMode) -> Void,
+        onFocus: @escaping () -> Void
+    ) {
         self.root = root
         self.isFocused = isFocused
         self.viewMode = viewMode
+        self.onViewModeChange = onViewModeChange
         self.onFocus = onFocus
         _currentURL = State(initialValue: URL(fileURLWithPath: root.path))
     }
@@ -617,26 +625,6 @@ struct BrowserPane: View {
             .buttonStyle(.borderless)
             .padding(.horizontal, 12)
             .frame(height: 44)
-
-            if let toolbarTooltip {
-                Text(toolbarTooltip)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7)
-                            .fill(Color.black.opacity(0.82))
-                    )
-                    .fixedSize()
-                    .padding(.trailing, 10)
-                    .offset(y: 34)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .zIndex(3)
-                    // The bubble sits over the toolbar's right edge; without this
-                    // it swallows hover/clicks on the Copy/Close buttons.
-                    .allowsHitTesting(false)
-            }
         }
         .frame(height: 44)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -644,12 +632,13 @@ struct BrowserPane: View {
 
     private var trailingActions: some View {
         HStack(spacing: 8) {
+            viewModeButton
+
             if gitSnapshot != nil {
                 PaneToolbarActionButton(
                     systemImage: "arrow.triangle.branch",
                     accessibilityLabel: "Project Status",
-                    tooltip: "项目状态（git）",
-                    hoveredTooltip: $toolbarTooltip
+                    tooltip: "项目状态（git）"
                 ) {
                     onFocus()
                     showsProjectCard = true
@@ -678,8 +667,7 @@ struct BrowserPane: View {
             PaneToolbarActionButton(
                 systemImage: store.isStarred(currentURL) ? "star.fill" : "star",
                 accessibilityLabel: "Star Folder",
-                tooltip: store.isStarred(currentURL) ? "取消收藏" : "收藏目录",
-                hoveredTooltip: $toolbarTooltip
+                tooltip: store.isStarred(currentURL) ? "取消收藏" : "收藏目录"
             ) {
                 onFocus()
                 store.toggleStar(currentURL)
@@ -688,8 +676,7 @@ struct BrowserPane: View {
             PaneToolbarActionButton(
                 systemImage: showsHiddenItems ? "eye" : "eye.slash",
                 accessibilityLabel: "Toggle Hidden Items",
-                tooltip: showsHiddenItems ? "隐藏隐藏文件和应用包内容" : "显示隐藏文件和应用包内容",
-                hoveredTooltip: $toolbarTooltip
+                tooltip: showsHiddenItems ? "隐藏隐藏文件和应用包内容" : "显示隐藏文件和应用包内容"
             ) {
                 onFocus()
                 showsHiddenItems.toggle()
@@ -699,8 +686,7 @@ struct BrowserPane: View {
             PaneToolbarActionButton(
                 systemImage: "arrow.up.forward.app",
                 accessibilityLabel: "Reveal in Finder",
-                tooltip: "在 Finder 中显示",
-                hoveredTooltip: $toolbarTooltip
+                tooltip: "在 Finder 中显示"
             ) {
                 onFocus()
                 NSWorkspace.shared.activateFileViewerSelecting([currentURL])
@@ -709,8 +695,7 @@ struct BrowserPane: View {
             PaneToolbarActionButton(
                 systemImage: "doc.on.doc",
                 accessibilityLabel: "Copy Path",
-                tooltip: "复制路径",
-                hoveredTooltip: $toolbarTooltip
+                tooltip: "复制路径"
             ) {
                 onFocus()
                 copyPath(currentURL.path)
@@ -719,11 +704,39 @@ struct BrowserPane: View {
             PaneToolbarActionButton(
                 systemImage: "xmark.circle",
                 accessibilityLabel: "Close Pane",
-                tooltip: "关闭面板",
-                hoveredTooltip: $toolbarTooltip
+                tooltip: "关闭面板"
             ) {
                 onFocus()
                 store.removeDirectory(root)
+            }
+        }
+    }
+
+    /// View mode lives in the pane's own toolbar (it is pane-local state; the
+    /// old top-toolbar segmented picker implied a global switch).
+    private var viewModeButton: some View {
+        Menu {
+            Picker("View", selection: Binding(get: { viewMode }, set: { onViewModeChange($0) })) {
+                ForEach(BrowserViewMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.systemImage)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Image(systemName: viewMode.systemImage)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("视图模式")
+        .toolbarTip("视图模式", isPresented: isHoveringViewMode)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.08)) {
+                isHoveringViewMode = hovering
             }
         }
     }
@@ -1517,35 +1530,5 @@ private struct ResizableHeaderCell<Content: View>: View {
                             }
                     )
             }
-    }
-}
-
-private struct PaneToolbarActionButton: View {
-    let systemImage: String
-    let accessibilityLabel: String
-    let tooltip: String
-    @Binding var hoveredTooltip: String?
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.secondary.opacity(isHovering ? 0.2 : 0))
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-        .help(tooltip)
-        .onHover { hovering in
-            isHovering = hovering
-            withAnimation(.easeOut(duration: 0.08)) {
-                hoveredTooltip = hovering ? tooltip : nil
-            }
-        }
     }
 }

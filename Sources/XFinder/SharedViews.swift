@@ -111,6 +111,77 @@ private final class DraggableWindowView: NSView {
     }
 }
 
+/// Icon button with an immediate tooltip bubble rendered directly beneath the
+/// button itself — so the tip always appears at the hovered control, never at
+/// a fixed toolbar corner. Used by both the pane toolbar and the top window
+/// toolbar so hover feedback feels identical. The owning toolbar must sit at a
+/// higher zIndex than the content below it, or the bubble gets covered.
+struct PaneToolbarActionButton: View {
+    let systemImage: String
+    let accessibilityLabel: String
+    let tooltip: String
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .frame(width: 26, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.secondary.opacity(isHovering ? 0.2 : 0))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .help(tooltip)
+        .toolbarTip(tooltip, isPresented: isHovering)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.08)) {
+                isHovering = hovering
+            }
+        }
+    }
+}
+
+extension View {
+    /// Attaches the immediate tooltip bubble below the view, centered on it.
+    /// Non-interactive and unclipped, so it never swallows clicks on
+    /// neighbouring controls.
+    func toolbarTip(_ text: String, isPresented: Bool) -> some View {
+        overlay(alignment: .top) {
+            if isPresented {
+                // Fixed offset below the 26pt button (not alignment-guide
+                // math, which rendered the bubble over the button itself).
+                ToolbarTooltipBubble(text: text)
+                    .offset(y: 34)
+                    .zIndex(10)
+            }
+        }
+    }
+}
+
+/// The tooltip bubble shown while a toolbar control is hovered.
+struct ToolbarTooltipBubble: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(Color.black.opacity(0.82))
+            )
+            .fixedSize()
+            .transition(.opacity.combined(with: .move(edge: .top)))
+            .allowsHitTesting(false)
+    }
+}
+
 @MainActor
 enum AppRelauncher {
     /// Launches a fresh instance of this app bundle via `open -n`, then

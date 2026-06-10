@@ -1,0 +1,68 @@
+import Foundation
+import Testing
+
+@testable import XFinder
+
+// MARK: - Changelog parsing
+
+@Test func changelogParserMapsHeadingsAndBullets() {
+    let markdown = """
+        # Changelog
+
+        ## [Unreleased]
+
+        ### Added
+        - Feature one
+          - Nested detail
+        Plain note
+        """
+    let lines = ChangelogParser.parse(markdown)
+
+    #expect(
+        lines.map(\.kind) == [
+            .heading1, .heading2, .heading3, .bullet(indent: 0), .bullet(indent: 1), .text,
+        ])
+    #expect(lines[0].content == "Changelog")
+    #expect(lines[3].content == "Feature one")
+    #expect(lines[4].content == "Nested detail")
+}
+
+@Test func changelogParserSkipsBlankLines() {
+    #expect(ChangelogParser.parse("\n\n  \n").isEmpty)
+}
+
+// MARK: - Event log
+
+@MainActor
+@Test func storeRecordsStatusAndErrorsNewestFirst() {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("XFinderEvents-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = WorkspaceStore(supportDirectory: dir)
+    store.clearEvents()  // drop init-time noise
+
+    store.statusMessage = "Did a thing"
+    store.lastError = "Something failed"
+    store.lastError = nil  // alert dismissal — must NOT log
+
+    #expect(store.events.count == 2)
+    #expect(store.events[0].isError)
+    #expect(store.events[0].message == "Something failed")
+    #expect(store.events[1].message == "Did a thing")
+
+    store.clearEvents()
+    #expect(store.events.isEmpty)
+}
+
+@MainActor
+@Test func eventLogIsCappedAt200() {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("XFinderEvents-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = WorkspaceStore(supportDirectory: dir)
+
+    for index in 0..<250 {
+        store.statusMessage = "event \(index)"
+    }
+
+    #expect(store.events.count == 200)
+    #expect(store.events.first?.message == "event 249")
+}

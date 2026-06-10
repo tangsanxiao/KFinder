@@ -1,12 +1,29 @@
 import AppKit
 import Foundation
 
+/// One entry in the in-app trace panel: every status message and error the
+/// store emits, timestamped, so debugging doesn't depend on a single
+/// transient alert.
+struct AppEvent: Identifiable, Equatable {
+    let id = UUID()
+    let date: Date
+    let isError: Bool
+    let message: String
+}
+
 @MainActor
 final class WorkspaceStore: ObservableObject {
     @Published var workspaces: [Workspace] = []
     @Published var selectedWorkspaceID: UUID?
-    @Published var statusMessage = "Ready"
-    @Published var lastError: String?
+    @Published var statusMessage = "Ready" {
+        didSet { recordEvent(statusMessage, isError: false) }
+    }
+    @Published var lastError: String? {
+        // nil assignments are alert dismissals, not events.
+        didSet { if let lastError { recordEvent(lastError, isError: true) } }
+    }
+    /// Newest first, capped — the trace panel's data source.
+    @Published private(set) var events: [AppEvent] = []
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
     @Published var stars: [StarItem] = []
@@ -46,6 +63,17 @@ final class WorkspaceStore: ObservableObject {
         load()
         loadStars()
         loadPaneLocations()
+    }
+
+    private func recordEvent(_ message: String, isError: Bool) {
+        events.insert(AppEvent(date: Date(), isError: isError, message: message), at: 0)
+        if events.count > 200 {
+            events.removeLast(events.count - 200)
+        }
+    }
+
+    func clearEvents() {
+        events.removeAll()
     }
 
     var selectedWorkspace: Workspace? {

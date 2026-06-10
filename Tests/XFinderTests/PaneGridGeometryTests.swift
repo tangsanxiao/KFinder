@@ -21,8 +21,8 @@ import Testing
     #expect(grid.cellCount >= 1)
 }
 
-@Test func describeShowsRealRowsWhenOverflowing() {
-    #expect(PaneGridGeometry.describe(layout: .columns3, paneCount: 3) == "3 面板 · Three Columns")
-    #expect(PaneGridGeometry.describe(layout: .grid, paneCount: 5) == "5 面板 · Grid (3×2)")
-    #expect(PaneGridGeometry.describe(layout: .single, paneCount: 1) == "1 面板 · Single")
+@Test func describeShowsRealRowsOnlyWhenOverflowing() {
+    #expect(PaneGridGeometry.describe(layout: .columns3, paneCount: 3) == "Three Columns")
+    #expect(PaneGridGeometry.describe(layout: .grid, paneCount: 5) == "Grid (3×2)")
+    #expect(PaneGridGeometry.describe(layout: .single, paneCount: 1) == "Single")
 }

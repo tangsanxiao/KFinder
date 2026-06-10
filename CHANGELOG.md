@@ -5,6 +5,8 @@ All notable changes to XFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- In-app "What's New" panel (clock button in the toolbar): renders the bundled CHANGELOG.md so you can recall the app's features and recent changes without leaving it.
+- Activity & Errors trace panel (list button in the toolbar, red dot on new errors): every status message and error, timestamped and copyable, capped at 200 entries — debugging no longer depends on one transient alert.
 - Git awareness: when a pane sits inside a git repo, list rows show a status badge after the filename (M modified, U untracked, A added, D deleted, R renamed, ! conflicted; folders get a • when their contents changed). Status loads on a background thread after the file list renders, so git never delays browsing.
 - Project status card: a branch button in the pane toolbar (repos only) pops a card with the current branch, uncommitted-change count, and the last 5 commits, plus "用 Claude 分析" and "打开终端" actions.
 - Claude Code bridge (all entry points English-labelled, no API keys stored — the CLI owns auth):
@@ -43,6 +45,10 @@ All notable changes to XFinder are recorded here. Newest first.
 - `AGENTS.md` (collaboration rules) and `ARCHITECTURE.md`.
 
 ### Changed
+- View mode control moved from the top toolbar into each pane's own toolbar (a menu button showing the current mode) — it always was pane-local state; the top-level segmented picker implied a global switch and dominated the toolbar's width.
+- Top toolbar buttons (sidebar, layout, activity, what's new) are now uniform 26pt icon buttons with the same immediate hover tips as the pane toolbar.
+- The Layout popover header shows just the layout name (plus real rows×columns only when panes overflow the preset); the pane-count prefix was noise.
+- Toolbar cleanup: the redundant "Layout"/"View" text labels are gone (icons + tooltips remain), and the debug Restart button moved into the Layout popover.
 - Right-side toolbar, pane container, and empty placeholder backgrounds now use the same system background as the sidebar and file panes.
 - Compression now selects the newly created zip archive after it appears.
 - List rows redone for Finder parity: compact row height, full-bleed rounded selection that covers one alternating-stripe band exactly.
@@ -52,6 +58,7 @@ All notable changes to XFinder are recorded here. Newest first.
 - Pane layout uses flexible stacks instead of absolute frames; panes fill their grid cells evenly.
 
 ### Fixed
+- Toolbar hover tips now render directly beneath the hovered button (they were anchored to the toolbar's right corner, so left-side buttons showed their tip far away) and are no longer covered by the pane area below the top toolbar.
 - Adding a pane now upgrades the workspace layout when the pane count exceeds what the layout can show (e.g. a second pane in Single no longer stacks into an unrepresented extra row). Roomier layouts keep their placeholders — the layout only auto-upgrades, mirroring the existing auto-fit on pane close.
 - Directory reads no longer block the main thread: pane reloads, folder expansion, and column drill-down load contents on a background thread (large folders such as `node_modules` no longer freeze the UI). Overlapping reloads are generation-guarded so a slow folder can't overwrite a newer result.
 - Dropping multiple files onto a pane now moves all of them — previously only the first dropped file was moved and the rest were silently ignored.

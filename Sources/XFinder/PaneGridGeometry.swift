@@ -22,15 +22,15 @@ enum PaneGridGeometry {
         return Grid(columns: columns, cellCount: rounded)
     }
 
-    /// Live description for the Layout control, e.g. "3 面板 · Three Columns"
-    /// or "5 面板 · Grid (3×2)" when panes overflow the preset's cells.
+    /// Live description for the Layout control: the layout title, plus the
+    /// real rows×columns only when panes overflow the preset's cells (e.g.
+    /// "Grid (3×2)") — that's the case where the icon alone would mislead.
     static func describe(layout: WorkspaceLayout, paneCount: Int) -> String {
-        let paneText = "\(paneCount) 面板"
-        guard layout != .mainAndStack else { return "\(paneText) · \(layout.title)" }
+        guard layout != .mainAndStack else { return layout.title }
         let grid = grid(for: layout, paneCount: paneCount)
         if let preferred = layout.preferredPaneCount, grid.cellCount <= preferred {
-            return "\(paneText) · \(layout.title)"
+            return layout.title
         }
-        return "\(paneText) · \(layout.title) (\(grid.rows)×\(grid.columns))"
+        return "\(layout.title) (\(grid.rows)×\(grid.columns))"
     }
 }

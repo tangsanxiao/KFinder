@@ -51,6 +51,10 @@
   **要求**：任何**新增面板**的代码路径（`openInNewPane`、`addDirectories`、未来的导入等）都必须经过 `fitLayoutAfterAddingPanes`：面板数超过 `layout.preferredPaneCount` 时自动升档，但不降档（保留用户选的大布局和占位符）。
   **原因**：曾导致 Single 布局下加第二个面板时被静默挤成上下两行，顶部 Layout 图标却没变——面板与布局状态对不齐。
 
+- **情况**：工具栏按钮的即时 tooltip 曾经是"共享状态 + 锚定在工具栏右上角"的单一气泡。
+  **要求**：tooltip 气泡必须由按钮自己渲染（`PaneToolbarActionButton` 内置，或对 Menu 等用 `.toolbarTip(_:isPresented:)`），且气泡会伸出工具栏下沿——工具栏容器必须比下方内容 `zIndex` 更高。
+  **原因**：锚定角落的气泡不跟随鼠标（左侧按钮的提示出现在最右边）；z 序不够会被下方文件面板盖住。
+
 - **情况**：键盘快捷键经由每个面板安装的 `NSEvent.addLocalMonitorForEvents` 处理（见 `BrowserPaneView.handleKeyDown`）。
   **要求**：handler 必须先做三重放行检查（非聚焦面板 / 正在重命名 / `firstResponder is NSTextView`）再消费事件；新增快捷键加进 `handleKeyDown` 的 switch，不要再装新的 monitor。
   **原因**：local monitor 是 app 级的，每个面板都会收到所有按键；不检查焦点会让多个面板同时响应，不检查文本输入会吞掉用户在 TextField 里的打字。
@@ -68,6 +72,9 @@
 - **要求**：跨视图共享的状态（如当前聚焦面板 `focusedPaneID`）放在 store 单一数据源里、在 store 方法内同步设置，不要靠"方法返回 id → 视图赋值 @Binding → 传播回各视图"这条链路，时序不可靠。
 
 ## 通用
+
+- **要求**：用户可感知的操作结果一律走 `store.statusMessage` / `store.lastError`，不要 print 或静默吞掉。这两个属性的 didSet 会自动进入 app 内的 Activity & Errors 面板，是排错的唯一线索来源。
+- **要求**：`build-app.sh` 会把 `CHANGELOG.md` 拷进 app bundle 供"What's New"面板展示——改 CHANGELOG 后要重新打包才能在 app 内看到。
 
 - 只用 SwiftPM 一个包管理器；`.build/`、`dist/`、`release/`、`AI_CONTEXT.md` 保持 gitignore。
 - 避免 `NavigationSplitView`（标题栏间距不可控），用自定义 sidebar/content split。

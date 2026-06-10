@@ -95,6 +95,14 @@ clock for testing). Directory reads run off the main thread via the async
   rows×columns; both the rendered grid and the Layout control's live
   description read it, so they cannot disagree.
 
+## In-app self-inspection
+
+- `AppInfoViews` provides the "What's New" sheet (renders the CHANGELOG.md
+  bundled by build-app.sh via `ChangelogParser`, a pure line-based parser)
+  and the Activity & Errors trace panel.
+- `WorkspaceStore` records every `statusMessage`/`lastError` into a capped
+  `events` log (newest first) that the trace panel displays.
+
 ## Persistence
 
 - Pane locations → `pane-locations.json` next to the workspaces file, pruned

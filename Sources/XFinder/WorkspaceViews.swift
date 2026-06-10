@@ -12,7 +12,6 @@ struct WorkspaceDetailView: View {
                 FinderLikeToolbar(
                     workspace: workspace,
                     focusedDirectoryID: $focusedDirectoryID,
-                    paneViewModes: $paneViewModes,
                     isSidebarVisible: $isSidebarVisible
                 )
                 .padding(.horizontal, 14)
@@ -22,8 +21,12 @@ struct WorkspaceDetailView: View {
                     WindowDragArea()
                         .frame(height: 44)
                 }
+                // Above the pane area, so button hover tips that extend below
+                // the toolbar aren't covered by the panes.
+                .zIndex(2)
 
                 Divider()
+                    .zIndex(1)
 
                 MultiPaneBrowserView(
                     workspace: workspace, focusedDirectoryID: $focusedDirectoryID, paneViewModes: $paneViewModes)
@@ -42,9 +45,10 @@ private struct FinderLikeToolbar: View {
     @EnvironmentObject private var store: WorkspaceStore
     let workspace: Workspace
     @Binding var focusedDirectoryID: UUID?
-    @Binding var paneViewModes: [UUID: BrowserViewMode]
     @Binding var isSidebarVisible: Bool
     @State private var isLayoutPopoverShown = false
+    @State private var isWhatsNewShown = false
+    @State private var isEventLogShown = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -58,33 +62,14 @@ private struct FinderLikeToolbar: View {
 
             Spacer()
 
-            Text("Layout")
-                .foregroundStyle(.secondary)
-
-            layoutMenu
-
-            Text("View")
-                .foregroundStyle(.secondary)
-
-            Picker("View", selection: viewMode) {
-                ForEach(BrowserViewMode.allCases) { mode in
-                    Image(systemName: mode.systemImage)
-                        .help(mode.title)
-                        .tag(mode)
-                }
+            // Uniform 26pt icon buttons with immediate hover tips, same
+            // affordance as the pane toolbar. View mode moved into each
+            // pane's own toolbar (it is pane-local, not window state).
+            HStack(spacing: 8) {
+                layoutMenu
+                eventLogButton
+                whatsNewButton
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 156)
-
-            Button {
-                AppRelauncher.relaunch()
-            } label: {
-                Image(systemName: "arrow.clockwise.circle")
-                    .frame(width: 30, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .help("Restart app (debug)")
         }
         .padding(.leading, isSidebarVisible ? 0 : 66)
         .frame(height: 44)
@@ -94,39 +79,60 @@ private struct FinderLikeToolbar: View {
         }
     }
 
-    private var viewMode: Binding<BrowserViewMode> {
-        Binding(
-            get: {
-                guard let focusedDirectoryID else { return .list }
-                return paneViewModes[focusedDirectoryID, default: .list]
-            },
-            set: { newValue in
-                guard let focusedDirectoryID else { return }
-                paneViewModes[focusedDirectoryID] = newValue
+    private var whatsNewButton: some View {
+        PaneToolbarActionButton(
+            systemImage: "clock.arrow.circlepath",
+            accessibilityLabel: "What's New",
+            tooltip: "What's New — 功能与最近改动"
+        ) {
+            isWhatsNewShown = true
+        }
+        .sheet(isPresented: $isWhatsNewShown) {
+            WhatsNewSheet(onClose: { isWhatsNewShown = false })
+        }
+    }
+
+    /// Trace-panel button with a red dot when the latest event is an error.
+    private var eventLogButton: some View {
+        PaneToolbarActionButton(
+            systemImage: "list.bullet.rectangle",
+            accessibilityLabel: "Activity & Errors",
+            tooltip: "操作与错误记录"
+        ) {
+            isEventLogShown = true
+        }
+        .overlay(alignment: .topTrailing) {
+            if store.events.first?.isError == true {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 7, height: 7)
+                    .offset(x: -1, y: 1)
+                    .allowsHitTesting(false)
             }
-        )
+        }
+        .popover(isPresented: $isEventLogShown, arrowEdge: .bottom) {
+            EventLogPanel(events: store.events, onClear: { store.clearEvents() })
+        }
     }
 
     private var leadingControls: some View {
-        Button {
+        PaneToolbarActionButton(
+            systemImage: "sidebar.left",
+            accessibilityLabel: "Toggle Sidebar",
+            tooltip: isSidebarVisible ? "收起侧边栏" : "展开侧边栏"
+        ) {
             isSidebarVisible.toggle()
-        } label: {
-            Image(systemName: "sidebar.left")
-                .frame(width: 30, height: 28)
         }
-        .buttonStyle(.borderless)
-        .help(isSidebarVisible ? "Collapse sidebar" : "Expand sidebar")
     }
 
     private var layoutMenu: some View {
-        Button {
+        PaneToolbarActionButton(
+            systemImage: (store.selectedWorkspace?.layout ?? workspace.layout).systemImage,
+            accessibilityLabel: "Layout",
+            tooltip: "布局与面板"
+        ) {
             isLayoutPopoverShown.toggle()
-        } label: {
-            Image(systemName: (store.selectedWorkspace?.layout ?? workspace.layout).systemImage)
-                .frame(width: 30, height: 28)
         }
-        .buttonStyle(.borderless)
-        .help("Layout and panes")
         .popover(isPresented: $isLayoutPopoverShown, arrowEdge: .bottom) {
             let current = store.selectedWorkspace?.layout ?? workspace.layout
             let paneCount = store.selectedWorkspace?.directories.count ?? workspace.directories.count
@@ -180,6 +186,17 @@ private struct FinderLikeToolbar: View {
                 .buttonStyle(.plain)
                 .padding(.vertical, 4)
                 .help("Import the folders from currently open Finder windows as panes.")
+
+                Divider()
+
+                Button {
+                    AppRelauncher.relaunch()
+                } label: {
+                    Label("Restart App (debug)", systemImage: "arrow.clockwise.circle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 4)
             }
             .padding(12)
             .frame(width: 220)
@@ -287,6 +304,7 @@ private struct MultiPaneBrowserView: View {
             root: item,
             isFocused: focusedDirectoryID == item.id,
             viewMode: paneViewModes[item.id, default: .list],
+            onViewModeChange: { paneViewModes[item.id] = $0 },
             onFocus: {
                 focusedDirectoryID = item.id
                 clearPlaceholderSelection()
