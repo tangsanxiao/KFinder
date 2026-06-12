@@ -26,7 +26,17 @@ struct BrowserPane: View {
     @State private var resizeStartWidths: FileListColumnWidths?
     @State private var errorMessage: String?
     @State private var isHoveringViewMode = false
+    /// Live mirror of `viewMode` for code reachable from the key monitor: the
+    /// monitor closure freezes the view-struct's lets at install time, but
+    /// @State storage stays current across renders.
+    @State private var liveViewMode: BrowserViewMode = .list
+    /// Scroll-into-view request for keyboard selection: a row id (list view)
+    /// or file id (icons view) consumed by the ScrollViewReader onChange.
+    @State private var keyboardScrollTarget: String?
     @State private var pendingSelectionURL: URL?
+    /// Set when entering a folder from the keyboard (Cmd+↓): select its first
+    /// item after the reload so arrow keys keep working.
+    @State private var pendingSelectFirstItem = false
     @State private var showsHiddenItems = false
     @State private var showsFilter = false
     @State private var filterText = ""
@@ -147,6 +157,8 @@ struct BrowserPane: View {
         .onChange(of: store.fileOperationRevision) { _ in
             scheduleReload(selecting: pendingSelectionURL)
         }
+        .onAppear { liveViewMode = viewMode }
+        .onChange(of: viewMode) { liveViewMode = $0 }
         .onChange(of: root.path) { newPath in
             currentURL = URL(fileURLWithPath: newPath)
             backStack.removeAll()
@@ -160,46 +172,65 @@ struct BrowserPane: View {
     private var fileContent: some View {
         switch viewMode {
         case .icons:
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 12) {
-                    ForEach(sortedItems) { file in
-                        IconFileCell(
-                            file: file,
-                            isSelected: selection.contains(file.id),
-                            isActivePane: isFocused,
-                            isRenaming: renamingFileID == file.id,
-                            renameDraft: $renameDraft,
-                            select: {
-                                onFocus()
-                                handleRowTap(file)
-                            },
-                            nameClick: {
-                                onFocus()
-                                handleNameClick(file)
-                            },
-                            commitRename: { commitRename(file) },
-                            cancelRename: { cancelRename() },
-                            open: {
-                                onFocus()
-                                open(file)
-                            },
-                            trash: {
-                                onFocus()
-                                store.moveToTrash(file.url)
-                            }
-                        )
-                    }
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    iconsGrid
                 }
-                .padding(12)
+                .onChange(of: keyboardScrollTarget) { target in
+                    guard let target else { return }
+                    scrollProxy.scrollTo(target)
+                    keyboardScrollTarget = nil
+                }
             }
         case .list:
-            GeometryReader { proxy in
-                let widths = resolvedColumnWidths(for: proxy.size.width)
-                let rows = flatRows
+            listContent
+        case .columns:
+            columnContent
+        }
+    }
 
-                let usedHeight = CGFloat(rows.count) * FileRowMetrics.height
-                let fillerHeight = max(0, proxy.size.height - usedHeight)
+    private var iconsGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 10)], spacing: 12) {
+            ForEach(sortedItems) { file in
+                IconFileCell(
+                    file: file,
+                    isSelected: selection.contains(file.id),
+                    isActivePane: isFocused,
+                    isRenaming: renamingFileID == file.id,
+                    renameDraft: $renameDraft,
+                    select: {
+                        onFocus()
+                        handleRowTap(file)
+                    },
+                    nameClick: {
+                        onFocus()
+                        handleNameClick(file)
+                    },
+                    commitRename: { commitRename(file) },
+                    cancelRename: { cancelRename() },
+                    open: {
+                        onFocus()
+                        open(file)
+                    },
+                    trash: {
+                        onFocus()
+                        store.moveToTrash(file.url)
+                    }
+                )
+            }
+        }
+        .padding(12)
+    }
 
+    private var listContent: some View {
+        GeometryReader { proxy in
+            let widths = resolvedColumnWidths(for: proxy.size.width)
+            let rows = flatRows
+
+            let usedHeight = CGFloat(rows.count) * FileRowMetrics.height
+            let fillerHeight = max(0, proxy.size.height - usedHeight)
+
+            ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
@@ -268,9 +299,15 @@ struct BrowserPane: View {
                     .frame(width: proxy.size.width, alignment: .leading)
                 }
                 .background(Color(nsColor: .controlBackgroundColor))
+                // Keyboard selection must stay visible: without this, ↑/↓
+                // can move the highlight outside the viewport and the
+                // "cursor" silently disappears.
+                .onChange(of: keyboardScrollTarget) { target in
+                    guard let target else { return }
+                    scrollProxy.scrollTo(target)
+                    keyboardScrollTarget = nil
+                }
             }
-        case .columns:
-            columnContent
         }
     }
 
@@ -349,7 +386,12 @@ struct BrowserPane: View {
     /// Handles a key event for this pane; returns nil to consume it. Events are
     /// passed through while unfocused, renaming, or typing in any text field.
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
-        guard isFocused, renamingFileID == nil, showsGoToPath == false, showsAnalysis == false else { return event }
+        // Focus MUST be read live from the store, not from the captured
+        // `isFocused` let: the monitor closure holds the view-struct copy from
+        // install time, whose lets are frozen — the pane focused back then
+        // would keep consuming keys forever. The store reference stays current.
+        guard store.focusedPaneID == root.id, renamingFileID == nil, showsGoToPath == false, showsAnalysis == false
+        else { return event }
         if NSApp.keyWindow?.firstResponder is NSTextView { return event }
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
@@ -407,17 +449,22 @@ struct BrowserPane: View {
                 anchor: selectionAnchor,
                 forward: forward
             ),
-            let target = rows.first(where: { $0.file.id == targetID })?.file
+            let targetRow = rows.first(where: { $0.file.id == targetID })
         else { return }
         if extend {
-            extendSelection(to: target)
+            extendSelection(to: targetRow.file)
         } else {
-            selectOnly(target)
+            selectOnly(targetRow.file)
         }
+        // List rows scroll by row id (path+depth), the icons grid by file id.
+        keyboardScrollTarget = liveViewMode == .list ? targetRow.id : targetRow.file.id
     }
 
     private func openSingleSelection() {
         guard let id = singleSelection, let file = loadedFiles.first(where: { $0.id == id }) else { return }
+        if canBrowseInline(file) {
+            pendingSelectFirstItem = true
+        }
         open(file)
     }
 
@@ -432,7 +479,7 @@ struct BrowserPane: View {
     }
 
     private func setSelectedFolderExpansion(_ expand: Bool) {
-        guard viewMode == .list, let id = singleSelection,
+        guard liveViewMode == .list, let id = singleSelection,
             let file = loadedFiles.first(where: { $0.id == id }), canBrowseInline(file)
         else { return }
         if expand, !expandedFolders.contains(file.id) {
@@ -1018,11 +1065,33 @@ struct BrowserPane: View {
             cancelPendingRename()
             renamingFileID = nil
             errorMessage = nil
+            applyPostNavigationSelection()
             await refreshGitSnapshot(generation: generation)
         } catch {
             guard generation == loadGeneration else { return }
             items = []
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Keeps keyboard flow unbroken across navigation, Finder-style: going up
+    /// selects the folder you came from; entering a folder via Cmd+↓ selects
+    /// its first item. Without a selection, the next arrow press would start
+    /// from nothing and the "cursor" would be lost.
+    private func applyPostNavigationSelection() {
+        if let pending = pendingSelectionURL {
+            pendingSelectionURL = nil
+            if let file = selectLoadedFile(at: pending) {
+                keyboardScrollTarget = liveViewMode == .list ? "\(file.id)-0" : file.id
+                return
+            }
+        }
+        if pendingSelectFirstItem {
+            pendingSelectFirstItem = false
+            if let first = sortedItems.first {
+                selectOnly(first)
+                keyboardScrollTarget = liveViewMode == .list ? "\(first.id)-0" : first.id
+            }
         }
     }
 
@@ -1230,7 +1299,7 @@ struct BrowserPane: View {
     }
 
     private func prepareColumnDrillDown(_ file: BrowserFileItem) {
-        guard viewMode == .columns, canBrowseInline(file) else { return }
+        guard liveViewMode == .columns, canBrowseInline(file) else { return }
         guard expandedContents[file.id] == nil else { return }
         Task {
             let children = try? await FileBrowserService.contents(
@@ -1394,7 +1463,10 @@ struct BrowserPane: View {
         // Guard here (not just at the disabled toolbar button) because the
         // keyboard shortcut and empty-area double-click also land here.
         guard currentURL.path != "/" else { return }
+        // Finder-style: after going up, the folder we came from is selected.
+        let origin = currentURL
         navigate(to: currentURL.deletingLastPathComponent())
+        pendingSelectionURL = origin
     }
 
     private func copyPath(_ path: String) {

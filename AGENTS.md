@@ -59,6 +59,10 @@
   **要求**：handler 必须先做三重放行检查（非聚焦面板 / 正在重命名 / `firstResponder is NSTextView`）再消费事件；新增快捷键加进 `handleKeyDown` 的 switch，不要再装新的 monitor。
   **原因**：local monitor 是 app 级的，每个面板都会收到所有按键；不检查焦点会让多个面板同时响应，不检查文本输入会吞掉用户在 TextField 里的打字。
 
+- **情况**：`.onAppear` 安装的长生命周期闭包（NSEvent monitor、Task 循环等）捕获的是**安装时刻的视图结构体副本**。
+  **要求**：这类闭包里**绝不能读视图的 `let` 属性**（如 `isFocused`、`viewMode`）做判断——它们被永久冻结在安装时的值。必须改读 live 来源：store 的 `@Published`（引用类型，永远最新，如 `store.focusedPaneID == root.id`）或 `@State`（存储盒跨渲染共享；let 需要时用 @State 镜像 + `onChange` 同步）。
+  **原因**：曾导致"点了右面板、方向键却操作左面板"——monitor 闭包里冻结的 `isFocused` 让安装时聚焦的面板永远认为自己有焦点。SwiftUI 每次渲染都重建结构体，但旧闭包持有旧副本。
+
 - **情况**：列表斑马纹曾经钉在视口上，滚动时与行错位。
   **要求**：交替底色必须画在每一行内（随内容滚动），空白区用受视口高度限制的 `ListStripeFiller` 填充；行高/选中块/斑马纹统一读 `FileRowMetrics`，不要写死。
   **原因**：钉视口的背景层不随 `ScrollView` 滚动，必然错位；分散的魔法数字会让几处对不齐。

@@ -29,7 +29,14 @@ final class WorkspaceStore: ObservableObject {
     @Published var stars: [StarItem] = []
     /// The currently focused pane (nil = a "待添加" placeholder is the target).
     /// Single source of truth so the sidebar and panes never disagree.
-    @Published var focusedPaneID: UUID?
+    /// Changes are traced into the event log — keyboard input routes by focus,
+    /// so "keys acted on the wrong pane" must be diagnosable from the panel.
+    @Published var focusedPaneID: UUID? {
+        didSet {
+            guard focusedPaneID != oldValue else { return }
+            recordEvent("Focus → \(paneTitle(for: focusedPaneID))", isError: false)
+        }
+    }
 
     private let persistenceURL: URL
     private let starsURL: URL

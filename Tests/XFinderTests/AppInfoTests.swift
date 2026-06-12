@@ -54,6 +54,23 @@ import Testing
 }
 
 @MainActor
+@Test func focusChangesAreTracedIntoTheEventLog() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("XFinderEvents-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = WorkspaceStore(supportDirectory: dir)
+    store.createWorkspace()
+    let paneID = try #require(store.openInNewPane(URL(fileURLWithPath: "/tmp"), title: "tmp"))
+    store.clearEvents()
+
+    store.focusedPaneID = nil
+    store.focusedPaneID = paneID  // back to the pane
+    store.focusedPaneID = paneID  // no-op — must not log twice
+
+    let focusEvents = store.events.filter { $0.message.hasPrefix("Focus → ") }
+    #expect(focusEvents.count == 2)
+}
+
+@MainActor
 @Test func eventLogIsCappedAt200() {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("XFinderEvents-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: dir) }
