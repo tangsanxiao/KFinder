@@ -403,9 +403,11 @@ private struct MultiPaneBrowserView: View {
             .frame(width: width)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
-            .hoverCursor(.resizeLeftRight)
+            .columnResizeCursor()
             .gesture(
-                DragGesture(minimumDistance: 0)
+                // Global space: the handle moves with the pane it resizes, so a
+                // view-local translation would feed back on itself and jitter.
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged { value in
                         let start = resizeStartMainWidth ?? currentMain
                         if resizeStartMainWidth == nil { resizeStartMainWidth = start }

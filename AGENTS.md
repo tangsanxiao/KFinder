@@ -69,11 +69,27 @@
 
 - **要求**：文件/文件夹图标用 `NSWorkspace.shared.icon(forFile:)`（真实系统图标），不要用 SF Symbol 近似；选中时图标不变色（只有文字和展开箭头变白）。
 
+- **情况**：需要在某个区域改变鼠标光标（列分隔线的 resize 等）。
+  **要求**：用 SwiftUI 原生 `pointerStyle`（macOS 15+，见 `columnResizeCursor()`），不要在 SwiftUI 覆盖层里塞 AppKit 子视图去改光标（cursor-rect / tracking area / cursorUpdate 都试过）。
+  **原因**：`NSHostingView` 接管了整个 SwiftUI 子树的光标管理，覆盖层里的 AppKit 子视图无论用哪种机制都赢不过它——要么光标根本不显示，要么和宿主来回抢导致闪动。只有用 SwiftUI 自己的光标 API 才不冲突。
+
+- **情况**：拖拽一个"会随被拖动对象移动而移动"的手柄（列分隔线、Main+Stack 分隔条）。
+  **要求**：`DragGesture` 必须指定 `coordinateSpace: .global`，不要用默认的视图本地坐标系。
+  **原因**：手柄随列宽/面板宽变化而移动时，视图本地的 `translation` 参照系也跟着动，形成正反馈，后面那列会抖动。global 坐标系只跟鼠标绝对移动有关，断开反馈环。
+
 - **情况**：在 `.onChange(of:)` 闭包里调用方法去读 `self` 的其它属性（如 `self.workspace.directories`）。
   **要求**：`onChange` 闭包里读到的 `self` 是**更新前的旧值**，必须用闭包参数传进来的新值，不能读 `self.xxx`。把需要的新数据作为参数传给被调方法（如 `correctStaleFocus(in: newDirectories)`）。
   **原因**：曾导致"新建面板后焦点被拉回第一个"——onChange 读旧 directories，把刚加的面板误判为已失效而重置焦点。
 
 - **要求**：跨视图共享的状态（如当前聚焦面板 `focusedPaneID`）放在 store 单一数据源里、在 store 方法内同步设置，不要靠"方法返回 id → 视图赋值 @Binding → 传播回各视图"这条链路，时序不可靠。
+
+- **情况**：切换 workspace 会销毁并重建所有 `BrowserPane`，其 `@State` 全部重置。
+  **要求**：任何"用户为某个面板设置、且期望切回来还在"的状态（排序、视图模式、导航位置等）**不能只存 `@State`**，必须按 pane id 存进 store 并持久化（参考 `paneSortOrder`/`paneLocations` 的 load/save/prune 三件套，删面板时一并清理）。
+  **原因**：曾导致切走再切回后按修改时间排序丢失、退回默认。`@State` 只活在视图实例的生命周期内。
+
+- **情况**：行右键菜单作用于多选（Trash / Copy To / Move To / Compress / Ask Claude）。
+  **要求**：这类操作必须遍历 `actionTargets(for:)` 返回的全部目标，不能只对被右键的那一行 `row.file` 生效。新增的行级批量操作走 `trashTargets`/`copyTargets`/`moveTargets` 这类统一入口。
+  **原因**：曾导致选中多个文件却只删/只移了一个，其余静默不动。
 
 ## 通用
 

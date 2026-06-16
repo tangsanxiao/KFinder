@@ -26,6 +26,7 @@ final class WorkspaceStore: ObservableObject {
     @Published private(set) var events: [AppEvent] = []
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
+    @Published private var paneSortOrders: [UUID: PaneSortOrder] = [:]
     @Published var stars: [StarItem] = []
     /// The currently focused pane (nil = a "待添加" placeholder is the target).
     /// Single source of truth so the sidebar and panes never disagree.
@@ -41,6 +42,7 @@ final class WorkspaceStore: ObservableObject {
     private let persistenceURL: URL
     private let starsURL: URL
     private let paneLocationsURL: URL
+    private let paneSortOrdersURL: URL
     private let finderController = FinderController()
 
     /// - Parameter supportDirectory: base directory for persistence. Defaults to
@@ -55,6 +57,7 @@ final class WorkspaceStore: ObservableObject {
         persistenceURL = directory.appendingPathComponent("workspaces.json")
         starsURL = directory.appendingPathComponent("stars.json")
         paneLocationsURL = directory.appendingPathComponent("pane-locations.json")
+        paneSortOrdersURL = directory.appendingPathComponent("pane-sort-orders.json")
 
         if supportDirectory == nil {
             let legacyPersistenceURL =
@@ -70,6 +73,7 @@ final class WorkspaceStore: ObservableObject {
         load()
         loadStars()
         loadPaneLocations()
+        loadPaneSortOrders()
     }
 
     private func recordEvent(_ message: String, isError: Bool) {
@@ -207,6 +211,8 @@ final class WorkspaceStore: ObservableObject {
         workspace.directories.removeAll { $0.id == item.id }
         paneLocations[item.id] = nil
         savePaneLocations()
+        paneSortOrders[item.id] = nil
+        savePaneSortOrders()
         // Auto-fit the layout to the remaining pane count so closing a pane
         // re-flows the rest instead of leaving an empty placeholder cell.
         workspace.layout = WorkspaceLayout.fitting(paneCount: workspace.directories.count)
@@ -232,6 +238,30 @@ final class WorkspaceStore: ObservableObject {
     private func savePaneLocations() {
         guard let data = try? JSONEncoder.pretty.encode(paneLocations) else { return }
         try? data.write(to: paneLocationsURL, options: .atomic)
+    }
+
+    // Pane sort order survives workspace switches (which recreate panes) and
+    // app restarts, mirroring pane locations.
+    private func loadPaneSortOrders() {
+        guard let data = try? Data(contentsOf: paneSortOrdersURL),
+            let decoded = try? JSONDecoder().decode([UUID: PaneSortOrder].self, from: data)
+        else { return }
+        paneSortOrders = decoded
+    }
+
+    private func savePaneSortOrders() {
+        guard let data = try? JSONEncoder.pretty.encode(paneSortOrders) else { return }
+        try? data.write(to: paneSortOrdersURL, options: .atomic)
+    }
+
+    func paneSortOrder(for id: UUID) -> PaneSortOrder {
+        paneSortOrders[id] ?? PaneSortOrder()
+    }
+
+    func setPaneSortOrder(_ order: PaneSortOrder, for id: UUID) {
+        guard paneSortOrders[id] != order else { return }
+        paneSortOrders[id] = order
+        savePaneSortOrders()
     }
 
     func paneLocation(for id: UUID?) -> URL? {

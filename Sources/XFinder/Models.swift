@@ -58,6 +58,28 @@ struct SystemBookmark: Identifiable, Hashable {
     let url: URL
 }
 
+enum BrowserSortKey: String, Codable {
+    case name
+    case modified
+    case kind
+
+    var defaultAscending: Bool {
+        switch self {
+        case .name, .kind:
+            return true
+        case .modified:
+            return false
+        }
+    }
+}
+
+/// A pane's sort column + direction, persisted per pane so it survives
+/// workspace switches (which destroy and recreate panes).
+struct PaneSortOrder: Codable, Equatable {
+    var key: BrowserSortKey = .name
+    var ascending: Bool = true
+}
+
 enum BrowserViewMode: String, CaseIterable, Identifiable {
     case icons
     case list

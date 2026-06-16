@@ -25,6 +25,22 @@ private func makeDir(_ url: URL) throws {
 }
 
 @MainActor
+@Test func movingMultipleFilesToTrashRemovesAllOfThem() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let files = (0..<3).map { root.appendingPathComponent("file\($0).txt") }
+    for file in files { try writeFile(file) }
+
+    // Mirrors the row context-menu loop: trash each selected file.
+    for file in files { store.moveToTrash(file) }
+
+    for file in files {
+        #expect(!FileManager.default.fileExists(atPath: file.path))
+    }
+}
+
+@MainActor
 @Test func copyIntoFolderWithExistingNameDeduplicates() throws {
     let (store, root) = try makeFixture()
     defer { try? FileManager.default.removeItem(at: root) }

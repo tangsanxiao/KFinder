@@ -20,8 +20,6 @@ struct BrowserPane: View {
     @State private var renamingFileID: BrowserFileItem.ID?
     @State private var renameDraft = ""
     @State private var pendingRenameTask: Task<Void, Never>?
-    @State private var sortKey: BrowserSortKey = .name
-    @State private var sortAscending = true
     @State private var columnWidths = FileListColumnWidths()
     @State private var resizeStartWidths: FileListColumnWidths?
     @State private var errorMessage: String?
@@ -214,7 +212,7 @@ struct BrowserPane: View {
                     },
                     trash: {
                         onFocus()
-                        store.moveToTrash(file.url)
+                        trashTargets(of: file)
                     }
                 )
             }
@@ -268,20 +266,11 @@ struct BrowserPane: View {
                                 },
                                 copy: { copyPath(row.file.url.path) },
                                 reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
-                                trash: {
-                                    store.moveToTrash(row.file.url)
-                                    scheduleReload()
-                                },
+                                trash: { trashTargets(of: row.file) },
                                 compress: { compress(row.file) },
                                 askClaude: { askClaudeAboutSelection(row.file) },
-                                copyTo: { destination in
-                                    store.copy(row.file.url, to: destination)
-                                    scheduleReload()
-                                },
-                                moveTo: { destination in
-                                    store.move(row.file.url, to: destination)
-                                    scheduleReload()
-                                }
+                                copyTo: { destination in copyTargets(of: row.file, to: destination) },
+                                moveTo: { destination in moveTargets(of: row.file, to: destination) }
                             )
                             .frame(width: proxy.size.width, alignment: .leading)
                             .clipped()
@@ -1027,18 +1016,9 @@ struct BrowserPane: View {
                     },
                     copy: { copyPath(file.url.path) },
                     reveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) },
-                    trash: {
-                        store.moveToTrash(file.url)
-                        scheduleReload()
-                    },
-                    copyTo: { destination in
-                        store.copy(file.url, to: destination)
-                        scheduleReload()
-                    },
-                    moveTo: { destination in
-                        store.move(file.url, to: destination)
-                        scheduleReload()
-                    }
+                    trash: { trashTargets(of: file) },
+                    copyTo: { destination in copyTargets(of: file, to: destination) },
+                    moveTo: { destination in moveTargets(of: file, to: destination) }
                 )
             }
         }
@@ -1149,13 +1129,20 @@ struct BrowserPane: View {
         }
     }
 
+    // Sort lives in the store (keyed by pane id) so it survives workspace
+    // switches that destroy and recreate panes.
+    private var sortKey: BrowserSortKey { store.paneSortOrder(for: root.id).key }
+    private var sortAscending: Bool { store.paneSortOrder(for: root.id).ascending }
+
     private func setSort(_ key: BrowserSortKey) {
-        if sortKey == key {
-            sortAscending.toggle()
+        var order = store.paneSortOrder(for: root.id)
+        if order.key == key {
+            order.ascending.toggle()
         } else {
-            sortKey = key
-            sortAscending = key.defaultAscending
+            order.key = key
+            order.ascending = key.defaultAscending
         }
+        store.setPaneSortOrder(order, for: root.id)
     }
 
     private func sorted(_ source: [BrowserFileItem]) -> [BrowserFileItem] {
@@ -1357,6 +1344,31 @@ struct BrowserPane: View {
         return flatRows.map(\.file).filter { ids.contains($0.id) }
     }
 
+    // Row context-menu actions operate on the whole selection (or just the
+    // right-clicked row when it isn't part of it). Each routes through
+    // actionTargets so multi-select doesn't silently act on one file.
+
+    private func trashTargets(of file: BrowserFileItem) {
+        for target in actionTargets(for: file) {
+            store.moveToTrash(target.url)
+        }
+        scheduleReload()
+    }
+
+    private func copyTargets(of file: BrowserFileItem, to destination: PaneDestination) {
+        for target in actionTargets(for: file) {
+            store.copy(target.url, to: destination)
+        }
+        scheduleReload()
+    }
+
+    private func moveTargets(of file: BrowserFileItem, to destination: PaneDestination) {
+        for target in actionTargets(for: file) {
+            store.move(target.url, to: destination)
+        }
+        scheduleReload()
+    }
+
     private func compress(_ file: BrowserFileItem) {
         onFocus()
         let targets = actionTargets(for: file)
@@ -1493,21 +1505,6 @@ private struct FileTreeRow: Identifiable {
     var id: String { "\(file.id)-\(depth)" }
 }
 
-private enum BrowserSortKey {
-    case name
-    case modified
-    case kind
-
-    var defaultAscending: Bool {
-        switch self {
-        case .name, .kind:
-            return true
-        case .modified:
-            return false
-        }
-    }
-}
-
 private struct SortHeaderButton: View {
     let title: String
     let key: BrowserSortKey
@@ -1565,12 +1562,6 @@ private enum ColumnResizeBoundary {
     case sizeKind
 }
 
-private enum ResizePhase {
-    case began
-    case changed
-    case ended
-}
-
 private struct ResizableHeaderCell<Content: View>: View {
     let width: CGFloat
     let onResize: (ResizePhase, CGFloat) -> Void
@@ -1586,9 +1577,12 @@ private struct ResizableHeaderCell<Content: View>: View {
                     .frame(width: 1, height: 32)
                     .frame(width: 10, height: 32)
                     .contentShape(Rectangle())
-                    .hoverCursor(.resizeLeftRight)
+                    .columnResizeCursor()
                     .gesture(
-                        DragGesture(minimumDistance: 0)
+                        // Global coordinate space: the handle moves as the
+                        // column resizes, so a view-local translation would
+                        // feed back on itself and jitter the next column.
+                        DragGesture(minimumDistance: 0, coordinateSpace: .global)
                             .onChanged { value in
                                 if !didBeginDrag {
                                     didBeginDrag = true

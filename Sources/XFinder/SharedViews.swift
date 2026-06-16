@@ -71,33 +71,91 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-struct CursorOnHover: ViewModifier {
+/// Sets the mouse cursor over a region using an AppKit tracking area on a
+/// persistent NSView, instead of SwiftUI `.onHover` + cursor push/pop. The
+/// push/pop approach lost its pairing during SwiftUI re-renders (the resizable
+/// header rebuilds while dragging or scrolling), so the resize cursor
+/// flickered or never appeared. A tracking area fires enter/exit purely on
+/// geometry (independent of hit testing), and the NSView isn't recreated on
+/// SwiftUI re-renders, so the cursor stays stable. `hitTest` returns nil so
+/// the overlay never steals the drag gesture beneath it.
+private struct CursorRectView: NSViewRepresentable {
     let cursor: NSCursor
-    @State private var isCursorPushed = false
 
-    func body(content: Content) -> some View {
-        content
-            .onHover { isHovering in
-                if isHovering, !isCursorPushed {
-                    cursor.push()
-                    isCursorPushed = true
-                } else if !isHovering, isCursorPushed {
-                    NSCursor.pop()
-                    isCursorPushed = false
-                }
-            }
-            .onDisappear {
-                if isCursorPushed {
-                    NSCursor.pop()
-                    isCursorPushed = false
-                }
-            }
+    func makeNSView(context: Context) -> TrackingView {
+        let view = TrackingView()
+        view.cursor = cursor
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackingView, context: Context) {
+        nsView.cursor = cursor
+    }
+
+    static func dismantleNSView(_ nsView: TrackingView, coordinator: ()) {
+        nsView.balancePop()
+    }
+
+    final class TrackingView: NSView {
+        var cursor: NSCursor = .arrow
+        private var pushed = false
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            trackingAreas.forEach(removeTrackingArea)
+            addTrackingArea(
+                NSTrackingArea(
+                    rect: bounds,
+                    options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                    owner: self
+                ))
+        }
+
+        override func mouseEntered(with event: NSEvent) {
+            guard !pushed else { return }
+            cursor.push()
+            pushed = true
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            balancePop()
+        }
+
+        func balancePop() {
+            guard pushed else { return }
+            NSCursor.pop()
+            pushed = false
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
 
 extension View {
     func hoverCursor(_ cursor: NSCursor) -> some View {
-        modifier(CursorOnHover(cursor: cursor))
+        overlay(CursorRectView(cursor: cursor))
+    }
+}
+
+enum ResizePhase {
+    case began
+    case changed
+    case ended
+}
+
+extension View {
+    /// Left–right column-resize cursor for a divider. Uses SwiftUI's native
+    /// `pointerStyle` (macOS 15+), which integrates with SwiftUI's own cursor
+    /// management so it doesn't flicker. AppKit overlays inside the SwiftUI
+    /// host can't win against NSHostingView's cursor handling, which is why the
+    /// earlier tracking-area / cursor-rect attempts flickered or didn't show.
+    @ViewBuilder
+    func columnResizeCursor() -> some View {
+        if #available(macOS 15.0, *) {
+            pointerStyle(.frameResize(position: .trailing))
+        } else {
+            hoverCursor(.resizeLeftRight)
+        }
     }
 }
 
