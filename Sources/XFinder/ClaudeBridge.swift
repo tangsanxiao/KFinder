@@ -30,14 +30,25 @@ enum ClaudeBridge {
             + paths.map { "- " + $0 }.joined(separator: "\n")
     }
 
+    /// The CLI invocation token: a custom absolute path (quoted) or bare
+    /// `claude` resolved via the login shell's PATH.
+    static func cliCommand(path: String) -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? "claude" : shellQuoted(trimmed)
+    }
+
     /// Runs `claude -p <prompt>` in `directory` and returns its stdout.
     /// Goes through a login shell so the user's PATH resolves the CLI; the
     /// child process is terminated if the surrounding task is cancelled.
-    static func analyzeProject(at directory: URL, prompt: String = analysisPrompt) async throws -> String {
+    static func analyzeProject(
+        at directory: URL, prompt: String = analysisPrompt, cliPath: String = ""
+    ) async throws
+        -> String
+    {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.currentDirectoryURL = directory
-        process.arguments = ["-lc", "claude -p " + shellQuoted(prompt)]
+        process.arguments = ["-lc", cliCommand(path: cliPath) + " -p " + shellQuoted(prompt)]
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout

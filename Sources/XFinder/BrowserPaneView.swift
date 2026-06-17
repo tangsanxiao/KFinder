@@ -23,7 +23,6 @@ struct BrowserPane: View {
     @State private var columnWidths = FileListColumnWidths()
     @State private var resizeStartWidths: FileListColumnWidths?
     @State private var errorMessage: String?
-    @State private var isHoveringViewMode = false
     /// Live mirror of `viewMode` for code reachable from the key monitor: the
     /// monitor closure freezes the view-struct's lets at install time, but
     /// @State storage stays current across renders.
@@ -38,6 +37,9 @@ struct BrowserPane: View {
     @State private var showsHiddenItems = false
     @State private var showsFilter = false
     @State private var filterText = ""
+    /// nil = show all categories; otherwise only items of this category (plus
+    /// folders, so you can still navigate into subdirs while filtering files).
+    @State private var categoryFilter: FileCategory?
     @FocusState private var filterFieldFocused: Bool
     @State private var showsGoToPath = false
     @State private var goToPathText = ""
@@ -268,6 +270,7 @@ struct BrowserPane: View {
                                 reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
                                 trash: { trashTargets(of: row.file) },
                                 compress: { compress(row.file) },
+                                claudeEnabled: store.settings.claudeIntegrationEnabled,
                                 askClaude: { askClaudeAboutSelection(row.file) },
                                 copyTo: { destination in copyTargets(of: row.file, to: destination) },
                                 moveTo: { destination in moveTargets(of: row.file, to: destination) }
@@ -306,7 +309,7 @@ struct BrowserPane: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("过滤当前目录", text: $filterText)
+                TextField(store.loc("过滤当前目录", "Filter this folder"), text: $filterText)
                     .textFieldStyle(.plain)
                     .focused($filterFieldFocused)
                     .onExitCommand { dismissFilter() }
@@ -319,7 +322,7 @@ struct BrowserPane: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                 }
-                Button("完成") { dismissFilter() }
+                Button(store.loc("完成", "Done")) { dismissFilter() }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
             }
@@ -333,19 +336,19 @@ struct BrowserPane: View {
 
     private var goToPathSheet: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("前往文件夹")
+            Text(store.loc("前往文件夹", "Go to Folder"))
                 .font(.headline)
-            TextField("输入路径，如 ~/Documents", text: $goToPathText)
+            TextField(store.loc("输入路径，如 ~/Documents", "Enter a path, e.g. ~/Documents"), text: $goToPathText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 380)
                 .onSubmit { goToEnteredPath() }
             HStack {
                 Spacer()
-                Button("取消") {
+                Button(store.loc("取消", "Cancel")) {
                     showsGoToPath = false
                     goToPathText = ""
                 }
-                Button("前往") { goToEnteredPath() }
+                Button(store.loc("前往", "Go")) { goToEnteredPath() }
                     .keyboardShortcut(.defaultAction)
             }
         }
@@ -362,7 +365,8 @@ struct BrowserPane: View {
         let expanded = (goToPathText as NSString).expandingTildeInPath
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDirectory), isDirectory.boolValue else {
-            store.lastError = "路径不存在或不是文件夹：\(goToPathText)"
+            store.lastError = store.loc(
+                "路径不存在或不是文件夹：\(goToPathText)", "Path doesn't exist or isn't a folder: \(goToPathText)")
             return
         }
         showsGoToPath = false
@@ -513,27 +517,31 @@ struct BrowserPane: View {
             Label("Open Terminal", systemImage: "terminal")
         }
 
-        Divider()
+        // Claude actions are opt-in (Settings ▸ Claude integration) so the
+        // default menu stays focused on file management.
+        if store.settings.claudeIntegrationEnabled {
+            Divider()
 
-        Button {
-            onFocus()
-            startAnalysis(question: ClaudeBridge.analysisPrompt, autoRun: true)
-        } label: {
-            Label("Analyze with Claude", systemImage: "sparkles")
-        }
+            Button {
+                onFocus()
+                startAnalysis(question: ClaudeBridge.analysisPrompt, autoRun: true)
+            } label: {
+                Label("Analyze with Claude", systemImage: "sparkles")
+            }
 
-        Button {
-            onFocus()
-            startAnalysis(question: "", autoRun: false)
-        } label: {
-            Label("Ask Claude…", systemImage: "questionmark.bubble")
-        }
+            Button {
+                onFocus()
+                startAnalysis(question: "", autoRun: false)
+            } label: {
+                Label("Ask Claude…", systemImage: "questionmark.bubble")
+            }
 
-        Button {
-            onFocus()
-            store.openClaudeCode(at: currentURL)
-        } label: {
-            Label("Open in Claude Code", systemImage: "apple.terminal")
+            Button {
+                onFocus()
+                store.openClaudeCode(at: currentURL)
+            } label: {
+                Label("Open in Claude Code", systemImage: "apple.terminal")
+            }
         }
     }
 
@@ -555,7 +563,8 @@ struct BrowserPane: View {
         analysisRunning = true
         analysisTask = Task {
             do {
-                let text = try await ClaudeBridge.analyzeProject(at: currentURL, prompt: analysisQuestion)
+                let text = try await ClaudeBridge.analyzeProject(
+                    at: currentURL, prompt: analysisQuestion, cliPath: store.settings.claudeCLIPath)
                 analysisText = text.isEmpty ? "（Claude 没有返回内容）" : text
             } catch is CancellationError {
                 // Sheet dismissed — nothing to show.
@@ -631,7 +640,7 @@ struct BrowserPane: View {
                     Image(systemName: "chevron.left")
                 }
                 .disabled(backStack.isEmpty)
-                .help("Back")
+                .helpTip(store.loc("后退", "Back"))
 
                 Button {
                     onFocus()
@@ -640,7 +649,7 @@ struct BrowserPane: View {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(forwardStack.isEmpty)
-                .help("Forward")
+                .helpTip(store.loc("前进", "Forward"))
 
                 Button {
                     onFocus()
@@ -649,7 +658,7 @@ struct BrowserPane: View {
                     Image(systemName: "arrow.up")
                 }
                 .disabled(currentURL.path == "/")
-                .help("Parent folder")
+                .helpTip(store.loc("上级目录", "Parent folder"))
 
                 pathCrumbs
 
@@ -667,85 +676,117 @@ struct BrowserPane: View {
     }
 
     private var trailingActions: some View {
+        // Three groups, separated by thin dividers, so the row reads as
+        // [view & filter] · [project status] · [more ▾] · [close] instead of a
+        // flat wall of icons.
         HStack(spacing: 8) {
+            categoryFilterButton
             viewModeButton
 
             if gitSnapshot != nil {
-                PaneToolbarActionButton(
-                    systemImage: "arrow.triangle.branch",
-                    accessibilityLabel: "Project Status",
-                    tooltip: "项目状态（git）"
-                ) {
-                    onFocus()
-                    showsProjectCard = true
-                }
-                .popover(isPresented: $showsProjectCard, arrowEdge: .bottom) {
-                    if let gitSnapshot {
-                        ProjectStatusCard(
-                            snapshot: gitSnapshot,
-                            onAnalyze: {
-                                showsProjectCard = false
-                                startAnalysis(question: ClaudeBridge.analysisPrompt, autoRun: true)
-                            },
-                            onOpenClaudeCode: {
-                                showsProjectCard = false
-                                store.openClaudeCode(at: currentURL)
-                            },
-                            onOpenTerminal: {
-                                showsProjectCard = false
-                                store.openTerminal(at: currentURL)
-                            }
-                        )
-                    }
-                }
+                toolbarSeparator
+                projectStatusButton
             }
 
-            PaneToolbarActionButton(
-                systemImage: store.isStarred(currentURL) ? "star.fill" : "star",
-                accessibilityLabel: "Star Folder",
-                tooltip: store.isStarred(currentURL) ? "取消收藏" : "收藏目录"
-            ) {
-                onFocus()
-                store.toggleStar(currentURL)
-            }
-
-            PaneToolbarActionButton(
-                systemImage: showsHiddenItems ? "eye" : "eye.slash",
-                accessibilityLabel: "Toggle Hidden Items",
-                tooltip: showsHiddenItems ? "隐藏隐藏文件和应用包内容" : "显示隐藏文件和应用包内容"
-            ) {
-                onFocus()
-                showsHiddenItems.toggle()
-                Task { await reload() }
-            }
-
-            PaneToolbarActionButton(
-                systemImage: "arrow.up.forward.app",
-                accessibilityLabel: "Reveal in Finder",
-                tooltip: "在 Finder 中显示"
-            ) {
-                onFocus()
-                NSWorkspace.shared.activateFileViewerSelecting([currentURL])
-            }
-
-            PaneToolbarActionButton(
-                systemImage: "doc.on.doc",
-                accessibilityLabel: "Copy Path",
-                tooltip: "复制路径"
-            ) {
-                onFocus()
-                copyPath(currentURL.path)
-            }
+            toolbarSeparator
+            overflowMenu
 
             PaneToolbarActionButton(
                 systemImage: "xmark.circle",
                 accessibilityLabel: "Close Pane",
-                tooltip: "关闭面板"
+                tooltip: store.loc("关闭面板", "Close pane")
             ) {
                 onFocus()
                 store.removeDirectory(root)
             }
         }
+    }
+
+    private var toolbarSeparator: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1, height: 18)
+            .padding(.horizontal, 1)
+    }
+
+    private var projectStatusButton: some View {
+        PaneToolbarActionButton(
+            systemImage: "arrow.triangle.branch",
+            accessibilityLabel: "Project Status",
+            tooltip: store.loc("项目状态（git）", "Project status (git)")
+        ) {
+            onFocus()
+            showsProjectCard = true
+        }
+        .popover(isPresented: $showsProjectCard, arrowEdge: .bottom) {
+            if let gitSnapshot {
+                ProjectStatusCard(
+                    snapshot: gitSnapshot,
+                    claudeEnabled: store.settings.claudeIntegrationEnabled,
+                    onAnalyze: {
+                        showsProjectCard = false
+                        startAnalysis(question: ClaudeBridge.analysisPrompt, autoRun: true)
+                    },
+                    onOpenClaudeCode: {
+                        showsProjectCard = false
+                        store.openClaudeCode(at: currentURL)
+                    },
+                    onOpenTerminal: {
+                        showsProjectCard = false
+                        store.openTerminal(at: currentURL)
+                    }
+                )
+            }
+        }
+    }
+
+    /// Secondary pane actions, consolidated into one "⋯" menu so the toolbar
+    /// stays compact: star, hidden-items, reveal, copy path.
+    private var overflowMenu: some View {
+        Menu {
+            Button {
+                onFocus()
+                store.toggleStar(currentURL)
+            } label: {
+                Label(
+                    store.isStarred(currentURL)
+                        ? store.loc("取消收藏", "Unstar") : store.loc("收藏目录", "Star folder"),
+                    systemImage: store.isStarred(currentURL) ? "star.fill" : "star")
+            }
+            Button {
+                onFocus()
+                showsHiddenItems.toggle()
+                Task { await reload() }
+            } label: {
+                Label(
+                    showsHiddenItems
+                        ? store.loc("隐藏隐藏文件", "Hide hidden files")
+                        : store.loc("显示隐藏文件", "Show hidden files"),
+                    systemImage: showsHiddenItems ? "eye.slash" : "eye")
+            }
+            Divider()
+            Button {
+                onFocus()
+                NSWorkspace.shared.activateFileViewerSelecting([currentURL])
+            } label: {
+                Label(store.loc("在 Finder 中显示", "Reveal in Finder"), systemImage: "arrow.up.forward.app")
+            }
+            Button {
+                onFocus()
+                copyPath(currentURL.path)
+            } label: {
+                Label(store.loc("复制路径", "Copy Path"), systemImage: "doc.on.doc")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
+                .foregroundStyle(store.isStarred(currentURL) ? Color.accentColor : Color.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .helpTip(store.loc("更多操作", "More actions"))
     }
 
     /// View mode lives in the pane's own toolbar (it is pane-local state; the
@@ -768,13 +809,55 @@ struct BrowserPane: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .help("视图模式")
-        .toolbarTip("视图模式", isPresented: isHoveringViewMode)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.08)) {
-                isHoveringViewMode = hovering
+        .helpTip(store.loc("视图模式", "View mode"))
+    }
+
+    /// Category quick-filter (3-D): narrow the pane to docs / code / logs /
+    /// build-and-dependency noise, etc. Rule-based, no LLM. Highlighted when
+    /// active so it's obvious the listing is filtered.
+    private var categoryFilterButton: some View {
+        let chinese = store.settings.language.isChineseResolved
+        return Menu {
+            Button {
+                categoryFilter = nil
+            } label: {
+                if categoryFilter == nil {
+                    Label(store.loc("全部类型", "All types"), systemImage: "checkmark")
+                } else {
+                    Text(store.loc("全部类型", "All types"))
+                }
             }
+            Divider()
+            ForEach(FileCategory.allCases) { category in
+                Button {
+                    categoryFilter = category
+                } label: {
+                    if categoryFilter == category {
+                        Label(category.title(chinese: chinese), systemImage: "checkmark")
+                    } else {
+                        Label(category.title(chinese: chinese), systemImage: category.systemImage)
+                    }
+                }
+            }
+        } label: {
+            Image(
+                systemName: categoryFilter == nil
+                    ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill"
+            )
+            .frame(width: 26, height: 26)
+            .contentShape(Rectangle())
+            .foregroundStyle(categoryFilter == nil ? Color.secondary : Color.accentColor)
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .helpTip(
+            categoryFilter == nil
+                ? store.loc("按类型过滤", "Filter by type")
+                : store.loc(
+                    "已按「\(categoryFilter!.title(chinese: true))」过滤",
+                    "Filtered: \(categoryFilter!.title(chinese: false))")
+        )
     }
 
     private var pathCrumbs: some View {
@@ -978,7 +1061,20 @@ struct BrowserPane: View {
     }
 
     private var sortedItems: [BrowserFileItem] {
-        sorted(PaneFilterLogic.filter(items, query: filterText))
+        sorted(visible(items))
+    }
+
+    /// Applies the text filter and the category filter together. Folders are
+    /// kept when a non-folder category is selected so navigation still works.
+    private func visible(_ source: [BrowserFileItem]) -> [BrowserFileItem] {
+        var result = PaneFilterLogic.filter(source, query: filterText)
+        if let categoryFilter {
+            result = result.filter { item in
+                if categoryFilter != .folder && item.isDirectory { return true }
+                return FileCategoryClassifier.category(of: item) == categoryFilter
+            }
+        }
+        return result
     }
 
     private var selectedFolderChildren: [BrowserFileItem]? {
@@ -1123,7 +1219,7 @@ struct BrowserPane: View {
             var rows = [FileTreeRow(file: file, depth: depth)]
             if canBrowseInline(file), expandedFolders.contains(file.id), let children = expandedContents[file.id] {
                 rows.append(
-                    contentsOf: flatten(sorted(PaneFilterLogic.filter(children, query: filterText)), depth: depth + 1))
+                    contentsOf: flatten(sorted(visible(children)), depth: depth + 1))
             }
             return rows
         }
@@ -1210,6 +1306,7 @@ struct BrowserPane: View {
         // Navigation calls this; a stale filter from the previous folder would
         // silently hide files in the new one.
         filterText = ""
+        categoryFilter = nil
     }
 
     /// Routes a row click through the active modifier keys: Shift extends a

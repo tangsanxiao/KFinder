@@ -27,6 +27,15 @@ final class WorkspaceStore: ObservableObject {
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
     @Published private var paneSortOrders: [UUID: PaneSortOrder] = [:]
+    /// Drives the Settings sheet; toggled from the sidebar gear and the
+    /// standard ⌘, menu command. Not persisted.
+    @Published var isSettingsPresented = false
+    @Published var settings = AppSettings() {
+        didSet {
+            guard settings != oldValue else { return }
+            saveSettings()
+        }
+    }
     @Published var stars: [StarItem] = []
     /// The currently focused pane (nil = a "待添加" placeholder is the target).
     /// Single source of truth so the sidebar and panes never disagree.
@@ -43,6 +52,7 @@ final class WorkspaceStore: ObservableObject {
     private let starsURL: URL
     private let paneLocationsURL: URL
     private let paneSortOrdersURL: URL
+    private let settingsURL: URL
     private let finderController = FinderController()
 
     /// - Parameter supportDirectory: base directory for persistence. Defaults to
@@ -58,6 +68,7 @@ final class WorkspaceStore: ObservableObject {
         starsURL = directory.appendingPathComponent("stars.json")
         paneLocationsURL = directory.appendingPathComponent("pane-locations.json")
         paneSortOrdersURL = directory.appendingPathComponent("pane-sort-orders.json")
+        settingsURL = directory.appendingPathComponent("settings.json")
 
         if supportDirectory == nil {
             let legacyPersistenceURL =
@@ -74,6 +85,27 @@ final class WorkspaceStore: ObservableObject {
         loadStars()
         loadPaneLocations()
         loadPaneSortOrders()
+        loadSettings()
+    }
+
+    private func loadSettings() {
+        guard let data = try? Data(contentsOf: settingsURL),
+            let decoded = try? JSONDecoder().decode(AppSettings.self, from: data)
+        else { return }
+        settings = decoded
+    }
+
+    private func saveSettings() {
+        guard let data = try? JSONEncoder.pretty.encode(settings) else { return }
+        try? data.write(to: settingsURL, options: .atomic)
+    }
+
+    /// Bilingual string helper: returns the Chinese or English variant per the
+    /// language setting (`.system` follows the OS). Views read it as
+    /// `store.loc("中文", "English")`; since `settings` is @Published, changing
+    /// the language re-renders everything.
+    func loc(_ zh: String, _ en: String) -> String {
+        settings.language.isChineseResolved ? zh : en
     }
 
     private func recordEvent(_ message: String, isError: Bool) {
@@ -338,7 +370,9 @@ final class WorkspaceStore: ObservableObject {
     /// CLI — the "hand the directory to an agent" action. Uses AppleScript
     /// (like Finder import) because `open -a Terminal` can't pass a command.
     func openClaudeCode(at url: URL) {
-        let shellCommand = "cd " + ClaudeBridge.shellQuoted(url.path) + " && claude"
+        let shellCommand =
+            "cd " + ClaudeBridge.shellQuoted(url.path) + " && "
+            + ClaudeBridge.cliCommand(path: settings.claudeCLIPath)
         let escaped =
             shellCommand
             .replacingOccurrences(of: "\\", with: "\\\\")

@@ -93,6 +93,7 @@ struct FileRow: View {
     let reveal: () -> Void
     let trash: () -> Void
     let compress: () -> Void
+    let claudeEnabled: Bool
     let askClaude: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
@@ -163,7 +164,9 @@ struct FileRow: View {
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
             Button("Compress") { compress() }
-            Button("Ask Claude About Selection") { askClaude() }
+            if claudeEnabled {
+                Button("Ask Claude About Selection") { askClaude() }
+            }
             Button("Move to Trash", role: .destructive) { trash() }
 
             if !destinations.isEmpty {

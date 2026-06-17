@@ -71,6 +71,27 @@ import Testing
 }
 
 @MainActor
+@Test func settingsPersistAcrossStoreInstances() {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("XFinderSettings-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+
+    let store = WorkspaceStore(supportDirectory: dir)
+    #expect(store.settings.claudeIntegrationEnabled == false)  // off by default
+    store.settings.claudeIntegrationEnabled = true
+    store.settings.claudeCLIPath = "/opt/homebrew/bin/claude"
+
+    let relaunched = WorkspaceStore(supportDirectory: dir)
+    #expect(relaunched.settings.claudeIntegrationEnabled)
+    #expect(relaunched.settings.claudeCLIPath == "/opt/homebrew/bin/claude")
+}
+
+@Test func cliCommandQuotesCustomPathAndFallsBackToPath() {
+    #expect(ClaudeBridge.cliCommand(path: "") == "claude")
+    #expect(ClaudeBridge.cliCommand(path: "  ") == "claude")
+    #expect(ClaudeBridge.cliCommand(path: "/opt/homebrew/bin/claude") == "'/opt/homebrew/bin/claude'")
+}
+
+@MainActor
 @Test func eventLogIsCappedAt200() {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("XFinderEvents-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: dir) }

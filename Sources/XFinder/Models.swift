@@ -58,6 +58,82 @@ struct SystemBookmark: Identifiable, Hashable {
     let url: URL
 }
 
+/// App-wide settings persisted to settings.json. Claude integration is off by
+/// default so the default file-manager experience stays clean; users who want
+/// the agent features opt in.
+enum AppLanguage: String, Codable, CaseIterable, Identifiable {
+    case system
+    case chinese
+    case english
+
+    var id: String { rawValue }
+
+    /// Resolves to the concrete language; `.system` follows the OS preference.
+    var isChineseResolved: Bool {
+        switch self {
+        case .chinese: return true
+        case .english: return false
+        case .system:
+            return Locale.preferredLanguages.first?.lowercased().hasPrefix("zh") ?? false
+        }
+    }
+}
+
+struct AppSettings: Codable, Equatable {
+    var claudeIntegrationEnabled = false
+    /// Empty = resolve `claude` via the login shell's PATH. A custom path is
+    /// used verbatim when the CLI isn't on PATH.
+    var claudeCLIPath = ""
+    /// When on, the top toolbar shows the Activity & Errors (trace) button.
+    var debugModeEnabled = false
+    var language: AppLanguage = .system
+}
+
+/// Coarse, rule-based file classification (no LLM) for the pane's category
+/// filter — built for the AI-agent workflow where a run leaves behind docs,
+/// logs, scripts, and build/dependency noise mixed together.
+enum FileCategory: String, CaseIterable, Identifiable {
+    case folder
+    case document
+    case code
+    case data
+    case image
+    case archive
+    case log
+    case noise  // build output / dependency dirs / temp artifacts
+    case other
+
+    var id: String { rawValue }
+
+    func title(chinese: Bool) -> String {
+        switch self {
+        case .folder: return chinese ? "文件夹" : "Folders"
+        case .document: return chinese ? "文档" : "Documents"
+        case .code: return chinese ? "代码" : "Code"
+        case .data: return chinese ? "数据/配置" : "Data / Config"
+        case .image: return chinese ? "图片" : "Images"
+        case .archive: return chinese ? "压缩包" : "Archives"
+        case .log: return chinese ? "日志" : "Logs"
+        case .noise: return chinese ? "构建/依赖噪音" : "Build / Dependency noise"
+        case .other: return chinese ? "其他" : "Other"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .folder: "folder"
+        case .document: "doc.text"
+        case .code: "chevron.left.forwardslash.chevron.right"
+        case .data: "tablecells"
+        case .image: "photo"
+        case .archive: "archivebox"
+        case .log: "scroll"
+        case .noise: "trash"
+        case .other: "doc"
+        }
+    }
+}
+
 enum BrowserSortKey: String, Codable {
     case name
     case modified

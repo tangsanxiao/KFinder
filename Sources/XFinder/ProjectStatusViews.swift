@@ -4,6 +4,7 @@ import SwiftUI
 /// uncommitted-change count, recent commits, plus the agent-bridge actions.
 struct ProjectStatusCard: View {
     let snapshot: GitDirectorySnapshot
+    let claudeEnabled: Bool
     let onAnalyze: () -> Void
     let onOpenClaudeCode: () -> Void
     let onOpenTerminal: () -> Void
@@ -51,15 +52,17 @@ struct ProjectStatusCard: View {
             Divider()
 
             HStack(spacing: 10) {
-                Button {
-                    onAnalyze()
-                } label: {
-                    Label("Analyze with Claude", systemImage: "sparkles")
-                }
-                Button {
-                    onOpenClaudeCode()
-                } label: {
-                    Label("Open in Claude Code", systemImage: "apple.terminal")
+                if claudeEnabled {
+                    Button {
+                        onAnalyze()
+                    } label: {
+                        Label("Analyze with Claude", systemImage: "sparkles")
+                    }
+                    Button {
+                        onOpenClaudeCode()
+                    } label: {
+                        Label("Open in Claude Code", systemImage: "apple.terminal")
+                    }
                 }
                 Button {
                     onOpenTerminal()

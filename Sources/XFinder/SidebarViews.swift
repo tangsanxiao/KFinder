@@ -22,6 +22,9 @@ struct SidebarView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 16)
             }
+
+            Divider()
+            sidebarFooter
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .alert("Rename Workspace", isPresented: renameAlertBinding) {
@@ -37,6 +40,26 @@ struct SidebarView: View {
                 workspaceToRename = nil
             }
         }
+    }
+
+    /// Settings entry at the sidebar's bottom-left (Claude-desktop style); the
+    /// standard ⌘, command is the other entry point.
+    private var sidebarFooter: some View {
+        HStack {
+            Button {
+                store.isSettingsPresented = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .helpTip(store.loc("设置", "Settings"))
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
     }
 
     private var workspaceSection: some View {

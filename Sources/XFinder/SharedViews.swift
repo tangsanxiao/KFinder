@@ -169,11 +169,112 @@ private final class DraggableWindowView: NSView {
     }
 }
 
-/// Icon button with an immediate tooltip bubble rendered directly beneath the
-/// button itself — so the tip always appears at the hovered control, never at
-/// a fixed toolbar corner. Used by both the pane toolbar and the top window
-/// toolbar so hover feedback feels identical. The owning toolbar must sit at a
-/// higher zIndex than the content below it, or the bubble gets covered.
+/// Single window-level tooltip layer. Native `.help()` doesn't fire reliably
+/// in this hidden-title-bar / full-size-content window, so we render our own
+/// immediate bubble: controls report their frame + text on hover, and the
+/// overlay (installed once in ContentView) positions a bubble clamped inside
+/// the window so it never clips at an edge or attaches to the wrong control.
+@MainActor
+final class TooltipCenter: ObservableObject {
+    @Published var text: String?
+    @Published var anchor: CGRect = .zero
+}
+
+/// Coordinate space shared by the hover-frame capture and the overlay, so the
+/// reported anchor and the bubble position use the same origin.
+let tooltipCoordinateSpace = "xfRootTooltipSpace"
+
+extension View {
+    /// Immediate custom tooltip; works on plain buttons and Menus alike.
+    func helpTip(_ text: String) -> some View {
+        modifier(HelpTipModifier(text: text))
+    }
+}
+
+private struct HelpTipModifier: ViewModifier {
+    @EnvironmentObject private var center: TooltipCenter
+    let text: String
+    @State private var frame: CGRect = .zero
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { frame = proxy.frame(in: .named(tooltipCoordinateSpace)) }
+                        .onChange(of: proxy.frame(in: .named(tooltipCoordinateSpace))) { frame = $0 }
+                }
+            )
+            .onHover { hovering in
+                if hovering {
+                    center.text = text
+                    center.anchor = frame
+                } else if center.text == text {
+                    center.text = nil
+                }
+            }
+    }
+}
+
+/// Installed once over the whole window; draws the active tooltip bubble.
+struct TooltipOverlay: View {
+    @EnvironmentObject private var center: TooltipCenter
+    @State private var bubbleSize: CGSize = .zero
+    @State private var clickMonitor: Any?
+
+    var body: some View {
+        GeometryReader { geo in
+            if let text = center.text {
+                TooltipBubble(text: text)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.onAppear { bubbleSize = proxy.size }
+                                .onChange(of: proxy.size) { bubbleSize = $0 }
+                        }
+                    )
+                    .position(
+                        x: clampedX(in: geo.size.width),
+                        y: center.anchor.maxY + 6 + bubbleSize.height / 2
+                    )
+                    .allowsHitTesting(false)
+            }
+        }
+        // Dismiss the tooltip immediately on any click: onHover doesn't re-fire
+        // while the cursor stays on a just-clicked button, so without this the
+        // bubble lingers until the mouse leaves (worst on the sidebar toggle).
+        .onAppear {
+            clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { event in
+                center.text = nil
+                return event
+            }
+        }
+        .onDisappear {
+            if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+            clickMonitor = nil
+        }
+    }
+
+    private func clampedX(in width: CGFloat) -> CGFloat {
+        let half = bubbleSize.width / 2
+        return min(max(center.anchor.midX, half + 6), width - half - 6)
+    }
+}
+
+private struct TooltipBubble: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.85)))
+            .fixedSize()
+    }
+}
+
+/// Icon button for the toolbars, with the custom immediate tooltip.
 struct PaneToolbarActionButton: View {
     let systemImage: String
     let accessibilityLabel: String
@@ -193,50 +294,12 @@ struct PaneToolbarActionButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
-        .help(tooltip)
-        .toolbarTip(tooltip, isPresented: isHovering)
+        .helpTip(tooltip)
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.08)) {
                 isHovering = hovering
             }
         }
-    }
-}
-
-extension View {
-    /// Attaches the immediate tooltip bubble below the view, centered on it.
-    /// Non-interactive and unclipped, so it never swallows clicks on
-    /// neighbouring controls.
-    func toolbarTip(_ text: String, isPresented: Bool) -> some View {
-        overlay(alignment: .top) {
-            if isPresented {
-                // Fixed offset below the 26pt button (not alignment-guide
-                // math, which rendered the bubble over the button itself).
-                ToolbarTooltipBubble(text: text)
-                    .offset(y: 34)
-                    .zIndex(10)
-            }
-        }
-    }
-}
-
-/// The tooltip bubble shown while a toolbar control is hovered.
-struct ToolbarTooltipBubble: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(Color.black.opacity(0.82))
-            )
-            .fixedSize()
-            .transition(.opacity.combined(with: .move(edge: .top)))
-            .allowsHitTesting(false)
     }
 }
 

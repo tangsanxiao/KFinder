@@ -15,11 +15,14 @@ struct WorkspaceDetailView: View {
                     isSidebarVisible: $isSidebarVisible
                 )
                 .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                // No vertical padding: the toolbar's own 28pt height is the top
+                // band, so its content centers at y14 — exactly the traffic
+                // lights' center (measured: close button frame y6 h16 → mid 14)
+                // and the sidebar toggle's 28pt band.
                 .background {
                     Color(nsColor: .controlBackgroundColor)
                     WindowDragArea()
-                        .frame(height: 44)
+                        .frame(height: 28)
                 }
                 // Above the pane area, so button hover tips that extend below
                 // the toolbar aren't covered by the panes.
@@ -47,15 +50,12 @@ private struct FinderLikeToolbar: View {
     @Binding var focusedDirectoryID: UUID?
     @Binding var isSidebarVisible: Bool
     @State private var isLayoutPopoverShown = false
-    @State private var isWhatsNewShown = false
     @State private var isEventLogShown = false
 
     var body: some View {
         HStack(spacing: 14) {
-            leadingControls
-
             Text(store.paneTitle(for: focusedDirectoryID))
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(minWidth: 180, maxWidth: 320, alignment: .leading)
@@ -64,31 +64,23 @@ private struct FinderLikeToolbar: View {
 
             // Uniform 26pt icon buttons with immediate hover tips, same
             // affordance as the pane toolbar. View mode moved into each
-            // pane's own toolbar (it is pane-local, not window state).
+            // pane's own toolbar (it is pane-local, not window state). The
+            // sidebar toggle now lives at the window's top-left (ContentView).
             HStack(spacing: 8) {
                 layoutMenu
-                eventLogButton
-                whatsNewButton
+                // Trace panel is a debug affordance — only when Debug mode is on.
+                if store.settings.debugModeEnabled {
+                    eventLogButton
+                }
             }
         }
-        .padding(.leading, isSidebarVisible ? 0 : 66)
-        .frame(height: 44)
+        // When the sidebar is collapsed, clear the traffic lights + the
+        // top-left sidebar toggle that now overlays this area.
+        .padding(.leading, isSidebarVisible ? 0 : 112)
+        .frame(height: 28)
         .background(Color(nsColor: .controlBackgroundColor))
         .onTapGesture(count: 2) {
             WindowZoomController.toggle()
-        }
-    }
-
-    private var whatsNewButton: some View {
-        PaneToolbarActionButton(
-            systemImage: "clock.arrow.circlepath",
-            accessibilityLabel: "What's New",
-            tooltip: "What's New — 功能与最近改动"
-        ) {
-            isWhatsNewShown = true
-        }
-        .sheet(isPresented: $isWhatsNewShown) {
-            WhatsNewSheet(onClose: { isWhatsNewShown = false })
         }
     }
 
@@ -97,7 +89,7 @@ private struct FinderLikeToolbar: View {
         PaneToolbarActionButton(
             systemImage: "list.bullet.rectangle",
             accessibilityLabel: "Activity & Errors",
-            tooltip: "操作与错误记录"
+            tooltip: store.loc("操作与错误记录", "Activity & Errors")
         ) {
             isEventLogShown = true
         }
@@ -115,21 +107,11 @@ private struct FinderLikeToolbar: View {
         }
     }
 
-    private var leadingControls: some View {
-        PaneToolbarActionButton(
-            systemImage: "sidebar.left",
-            accessibilityLabel: "Toggle Sidebar",
-            tooltip: isSidebarVisible ? "收起侧边栏" : "展开侧边栏"
-        ) {
-            isSidebarVisible.toggle()
-        }
-    }
-
     private var layoutMenu: some View {
         PaneToolbarActionButton(
             systemImage: (store.selectedWorkspace?.layout ?? workspace.layout).systemImage,
             accessibilityLabel: "Layout",
-            tooltip: "布局与面板"
+            tooltip: store.loc("布局与面板", "Layout & panes")
         ) {
             isLayoutPopoverShown.toggle()
         }
@@ -170,7 +152,7 @@ private struct FinderLikeToolbar: View {
                     store.addDirectoriesFromOpenPanel()
                     isLayoutPopoverShown = false
                 } label: {
-                    Label("Add Pane", systemImage: "square.split.2x2")
+                    Label(store.loc("添加面板", "Add Pane"), systemImage: "square.split.2x2")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -180,19 +162,21 @@ private struct FinderLikeToolbar: View {
                     store.importOpenFinderWindows()
                     isLayoutPopoverShown = false
                 } label: {
-                    Label("Import Finder Windows", systemImage: "macwindow.badge.plus")
+                    Label(store.loc("导入 Finder 窗口", "Import Finder Windows"), systemImage: "macwindow.badge.plus")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
                 .padding(.vertical, 4)
-                .help("Import the folders from currently open Finder windows as panes.")
+                .help(
+                    store.loc(
+                        "把当前打开的 Finder 窗口作为面板导入。", "Import the folders from currently open Finder windows as panes."))
 
                 Divider()
 
                 Button {
                     AppRelauncher.relaunch()
                 } label: {
-                    Label("Restart App (debug)", systemImage: "arrow.clockwise.circle")
+                    Label(store.loc("重启应用（调试）", "Restart App (debug)"), systemImage: "arrow.clockwise.circle")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
