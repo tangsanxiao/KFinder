@@ -11,6 +11,7 @@ struct ProjectStatusCard: View {
     let onOpenClaudeCode: () -> Void
     let onOpenTerminal: () -> Void
     let onOpenChange: (URL) -> Void
+    let onShowDiff: (RecentChange) -> Void
 
     private func loc(_ zh: String, _ en: String) -> String { chinese ? zh : en }
 
@@ -40,23 +41,38 @@ struct ProjectStatusCard: View {
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(recentChanges) { change in
-                        Button {
-                            onOpenChange(change.url)
-                        } label: {
-                            HStack(spacing: 6) {
-                                GitStatusBadge(status: change.status)
-                                Text(change.url.lastPathComponent)
-                                    .font(.system(size: 12))
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Spacer(minLength: 4)
-                                Text(Self.relativeFormatter.localizedString(for: change.modified, relativeTo: Date()))
+                        HStack(spacing: 6) {
+                            Button {
+                                onOpenChange(change.url)
+                            } label: {
+                                HStack(spacing: 6) {
+                                    GitStatusBadge(status: change.status)
+                                    Text(change.url.lastPathComponent)
+                                        .font(.system(size: 12))
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                    Spacer(minLength: 4)
+                                    Text(
+                                        Self.relativeFormatter.localizedString(
+                                            for: change.modified, relativeTo: Date())
+                                    )
                                     .font(.system(size: 10))
                                     .foregroundStyle(.tertiary)
+                                }
+                                .contentShape(Rectangle())
                             }
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+
+                            Button {
+                                onShowDiff(change)
+                            } label: {
+                                Image(systemName: "plusminus")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help(loc("查看 diff", "View diff"))
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -115,6 +131,77 @@ struct ProjectStatusCard: View {
         formatter.unitsStyle = .abbreviated
         return formatter
     }()
+}
+
+/// Sheet showing a single file's `git diff`, with add/delete line coloring.
+struct DiffSheet: View {
+    let fileName: String
+    let chinese: Bool
+    let isLoading: Bool
+    let lines: [DiffLine]
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(chinese ? "差异 — \(fileName)" : "Diff — \(fileName)", systemImage: "plusminus")
+                    .font(.headline)
+                Spacer()
+                Button(chinese ? "关闭" : "Close") { onClose() }
+                    .keyboardShortcut(.cancelAction)
+            }
+
+            Divider()
+
+            if isLoading {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text(chinese ? "正在读取 diff…" : "Reading diff…").foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 120)
+            } else if lines.isEmpty {
+                Text(chinese ? "没有差异。" : "No differences.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+            } else {
+                ScrollView([.vertical, .horizontal]) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(lines) { line in
+                            Text(line.text.isEmpty ? " " : line.text)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(color(for: line.kind))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 8)
+                                .background(background(for: line.kind))
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .frame(minWidth: 480, minHeight: 200, maxHeight: 460)
+            }
+        }
+        .padding(18)
+        .frame(width: 640)
+    }
+
+    private func color(for kind: DiffLine.Kind) -> Color {
+        switch kind {
+        case .addition: .green
+        case .deletion: .red
+        case .hunk: .purple
+        case .header: .secondary
+        case .context: .primary
+        }
+    }
+
+    private func background(for kind: DiffLine.Kind) -> Color {
+        switch kind {
+        case .addition: Color.green.opacity(0.10)
+        case .deletion: Color.red.opacity(0.10)
+        default: Color.clear
+        }
+    }
 }
 
 /// Sheet for headless `claude -p` runs against the pane's directory. The

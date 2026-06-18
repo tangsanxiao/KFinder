@@ -52,6 +52,11 @@ struct BrowserPane: View {
     @State private var analysisError: String?
     @State private var analysisTask: Task<Void, Never>?
     @State private var analysisQuestion = ""
+    @State private var showsDiff = false
+    @State private var diffFileName = ""
+    @State private var diffLoading = false
+    @State private var diffLines: [DiffLine] = []
+    @State private var diffTask: Task<Void, Never>?
     // Reloads run async (directory IO happens off the main thread); the
     // generation counter drops results from a reload that another, newer
     // reload has superseded so a slow folder can't overwrite a fast one.
@@ -134,6 +139,15 @@ struct BrowserPane: View {
         }
         .sheet(isPresented: $showsGoToPath) {
             goToPathSheet
+        }
+        .sheet(isPresented: $showsDiff, onDismiss: { diffTask?.cancel() }) {
+            DiffSheet(
+                fileName: diffFileName,
+                chinese: store.settings.language.isChineseResolved,
+                isLoading: diffLoading,
+                lines: diffLines,
+                onClose: { showsDiff = false }
+            )
         }
         .sheet(isPresented: $showsAnalysis, onDismiss: { cancelAnalysis() }) {
             ClaudeAnalysisSheet(
@@ -745,6 +759,10 @@ struct BrowserPane: View {
                     onOpenChange: { url in
                         showsProjectCard = false
                         revealRecentChange(url)
+                    },
+                    onShowDiff: { change in
+                        showsProjectCard = false
+                        showDiff(for: change, repoRoot: gitSnapshot.repoRoot)
                     }
                 )
             }
@@ -1619,6 +1637,22 @@ struct BrowserPane: View {
         backStack.append(currentURL)
         currentURL = next
         clearSelection()
+    }
+
+    /// Loads and shows `git diff` for one changed file in a sheet.
+    private func showDiff(for change: RecentChange, repoRoot: URL) {
+        diffFileName = change.url.lastPathComponent
+        diffLines = []
+        diffLoading = true
+        showsDiff = true
+        diffTask?.cancel()
+        diffTask = Task {
+            let output = await GitStatusService.diff(
+                for: change.url, repoRoot: repoRoot, status: change.status)
+            if Task.isCancelled { return }
+            diffLines = GitStatusService.parseDiff(output ?? "")
+            diffLoading = false
+        }
     }
 
     /// Jumps the pane to a recently-changed file: navigate to its parent

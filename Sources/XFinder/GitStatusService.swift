@@ -30,6 +30,21 @@ struct GitCommitSummary: Sendable, Identifiable, Equatable {
     let relativeDate: String
 }
 
+/// One line of a unified diff, classified for colored rendering.
+struct DiffLine: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case addition
+        case deletion
+        case hunk
+        case header
+        case context
+    }
+
+    let id: Int
+    let kind: Kind
+    let text: String
+}
+
 /// A changed file plus its modification time, for the "Recent changes" list —
 /// the AI-agent workflow's core question: "what did the agent just touch?"
 struct RecentChange: Identifiable, Equatable {
@@ -145,6 +160,59 @@ enum GitStatusService {
             guard parts.count == 3 else { return nil }
             return GitCommitSummary(id: String(parts[0]), subject: String(parts[1]), relativeDate: String(parts[2]))
         }
+    }
+
+    /// `git diff` of a single file for the diff viewer. Untracked/added files
+    /// have no tracked baseline, so they're diffed against /dev/null to show
+    /// the whole file as additions. Tolerates git's non-zero "differences"
+    /// exit code (1) — only nil on a real failure.
+    static func diff(for fileURL: URL, repoRoot: URL, status: FileGitStatus) async -> String? {
+        let path = fileURL.path
+        if status == .untracked || status == .added {
+            return await runAllowingDiffExit(
+                ["-C", repoRoot.path, "diff", "--no-index", "--", "/dev/null", path])
+        }
+        return await runAllowingDiffExit(["-C", repoRoot.path, "diff", "--", path])
+    }
+
+    /// Pure classification of unified-diff lines for colored rendering.
+    static func parseDiff(_ output: String) -> [DiffLine] {
+        output.split(separator: "\n", omittingEmptySubsequences: false).enumerated().map { index, raw in
+            let line = String(raw)
+            let kind: DiffLine.Kind
+            if line.hasPrefix("+++") || line.hasPrefix("---") || line.hasPrefix("diff ")
+                || line.hasPrefix("index ") || line.hasPrefix("new file") || line.hasPrefix("deleted file")
+                || line.hasPrefix("rename ") || line.hasPrefix("similarity ") || line.hasPrefix("\\ ")
+            {
+                kind = .header
+            } else if line.hasPrefix("@@") {
+                kind = .hunk
+            } else if line.hasPrefix("+") {
+                kind = .addition
+            } else if line.hasPrefix("-") {
+                kind = .deletion
+            } else {
+                kind = .context
+            }
+            return DiffLine(id: index, kind: kind, text: line)
+        }
+    }
+
+    private static func runAllowingDiffExit(_ arguments: [String]) async -> String? {
+        await Task.detached(priority: .userInitiated) { () -> String? in
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = arguments
+            let stdout = Pipe()
+            process.standardOutput = stdout
+            process.standardError = Pipe()
+            do { try process.run() } catch { return nil }
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            // git diff exits 0 (no diff) or 1 (differences); both are fine.
+            guard process.terminationStatus <= 1 else { return nil }
+            return String(data: data, encoding: .utf8)
+        }.value
     }
 
     private static func run(_ arguments: [String], in directory: URL) async -> String? {

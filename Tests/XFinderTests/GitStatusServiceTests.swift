@@ -69,6 +69,33 @@ import Testing
     #expect(missing.isEmpty)
 }
 
+@Test func parseDiffClassifiesLines() {
+    let diff = """
+        diff --git a/file.txt b/file.txt
+        index 1234..5678 100644
+        --- a/file.txt
+        +++ b/file.txt
+        @@ -1,2 +1,2 @@
+         context line
+        -removed line
+        +added line
+        \\ No newline at end of file
+        """
+    let kinds = GitStatusService.parseDiff(diff).map(\.kind)
+    #expect(
+        kinds == [
+            .header,  // diff --git
+            .header,  // index
+            .header,  // ---
+            .header,  // +++
+            .hunk,  // @@
+            .context,  // " context"
+            .deletion,  // -removed
+            .addition,  // +added
+            .header,  // \ No newline
+        ])
+}
+
 @Test func parseLogSplitsHashSubjectDate() {
     let commits = GitStatusService.parseLog("abc1234\tFix the thing\t2 hours ago\ndef5678\tAdd feature\t3 days ago")
     #expect(commits.count == 2)
