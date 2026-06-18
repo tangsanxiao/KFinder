@@ -401,6 +401,58 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    // MARK: - Skill Hub operations
+
+    /// Copies a skill folder into an agent's first writable skills directory —
+    /// "distribute this skill to <agent>". No-op (with an error) if the agent
+    /// has no writable location. Returns true on success so the UI can rescan.
+    @discardableResult
+    func installSkill(from source: URL, to agent: SkillAgent) -> Bool {
+        guard let directory = agent.scanDirectories.first(where: { !$0.isReadOnly })?.url else {
+            lastError = "\(agent.displayName) 没有可写的技能目录。"
+            statusMessage = "Install skill failed"
+            return false
+        }
+        let dest = directory.appendingPathComponent(source.lastPathComponent)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try replaceDirectory(at: dest, withContentsOf: source)
+            statusMessage = "Installed \(source.lastPathComponent) to \(agent.displayName)"
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Install skill failed"
+            return false
+        }
+    }
+
+    /// Overwrites `destinations` with the contents of `source` — used to resolve
+    /// drift by promoting one copy as canonical. Read-only targets are the
+    /// caller's responsibility to exclude.
+    @discardableResult
+    func syncSkill(from source: URL, to destinations: [URL]) -> Bool {
+        var ok = true
+        for dest in destinations where dest.standardizedFileURL != source.standardizedFileURL {
+            do {
+                try replaceDirectory(at: dest, withContentsOf: source)
+            } catch {
+                lastError = error.localizedDescription
+                ok = false
+            }
+        }
+        statusMessage = ok ? "Synced \(source.lastPathComponent)" : "Sync skill failed"
+        return ok
+    }
+
+    /// Replaces the directory at `dest` with a copy of `source`. Removes any
+    /// existing dest first so the copy is a clean mirror (not a merge).
+    private func replaceDirectory(at dest: URL, withContentsOf source: URL) throws {
+        if FileManager.default.fileExists(atPath: dest.path) {
+            try FileManager.default.removeItem(at: dest)
+        }
+        try FileManager.default.copyItem(at: source, to: dest)
+    }
+
     // MARK: - Stars (favourite directories)
 
     func isStarred(_ url: URL) -> Bool {

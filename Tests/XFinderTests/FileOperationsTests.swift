@@ -41,6 +41,32 @@ private func makeDir(_ url: URL) throws {
 }
 
 @MainActor
+@Test func syncSkillMirrorsSourceOverDestinationsAndSkipsSelf() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    // source skill with two files; a stale destination with different content.
+    let source = root.appendingPathComponent("source/my-skill", isDirectory: true)
+    try makeDir(source)
+    try writeFile(source.appendingPathComponent("SKILL.md"), "v2")
+    try writeFile(source.appendingPathComponent("extra.txt"), "asset")
+
+    let dest = root.appendingPathComponent("dest/my-skill", isDirectory: true)
+    try makeDir(dest)
+    try writeFile(dest.appendingPathComponent("SKILL.md"), "v1-old")
+    try writeFile(dest.appendingPathComponent("removed.txt"), "should be gone")
+
+    #expect(store.syncSkill(from: source, to: [dest, source]))  // source target is skipped
+
+    #expect(try String(contentsOf: dest.appendingPathComponent("SKILL.md"), encoding: .utf8) == "v2")
+    #expect(FileManager.default.fileExists(atPath: dest.appendingPathComponent("extra.txt").path))
+    // Mirror, not merge: stale file removed.
+    #expect(!FileManager.default.fileExists(atPath: dest.appendingPathComponent("removed.txt").path))
+    // Source untouched.
+    #expect(FileManager.default.fileExists(atPath: source.appendingPathComponent("SKILL.md").path))
+}
+
+@MainActor
 @Test func copyIntoFolderWithExistingNameDeduplicates() throws {
     let (store, root) = try makeFixture()
     defer { try? FileManager.default.removeItem(at: root) }

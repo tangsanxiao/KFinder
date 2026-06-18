@@ -5,6 +5,8 @@ All notable changes to XFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- Skill Hub (sidebar entry): a unified catalog of Agent Skills (`<name>/SKILL.md`) scanned across installed AI clients (Claude Code, Trae CN incl. read-only built-ins). Each row shows which agents a skill is active in and flags content drift between copies. The detail panel shows purpose, version, license, and every installation (with reveal / edit).
+- Skill distribution & drift resolution in the detail panel: "Distribute to" copies a skill into another agent's skills directory; on drift, "Make canonical" overwrites the other writable copies from a chosen one (a clean mirror, not a merge). Built-in/read-only copies are never modified.
 - Recent changes in the project status card: the files git reports as changed (modified / untracked / added), newest-first by modification time, each with its status badge and a relative timestamp. Click one to jump the pane to it and select it — built for reviewing what an agent just touched. Deterministic (no LLM); deleted files are skipped.
 - Diff viewer from the recent-changes list: a ± button on each entry opens that file's `git diff` in a sheet with add/delete line coloring (untracked/added files show the whole file as additions). No editor or terminal needed to review an agent's edits.
 - "Explain with Claude" in the diff viewer (when Claude integration is on): sends that file's diff to the local `claude` CLI as context so the explanation is about the actual edit — what changed, the likely intent, and any risks — rather than a generic project summary.

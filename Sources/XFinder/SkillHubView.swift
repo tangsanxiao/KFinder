@@ -85,7 +85,23 @@ struct SkillHubView: View {
     @ViewBuilder
     private var detail: some View {
         if let selected {
-            SkillDetailCard(entry: selected, chinese: chinese, store: store)
+            SkillDetailCard(
+                entry: selected,
+                chinese: chinese,
+                store: store,
+                onInstall: { agent in
+                    guard let source = selected.installations.first(where: { !$0.isReadOnly })?.url else { return }
+                    if store.installSkill(from: source, to: agent) {
+                        Task { await reload() }
+                    }
+                },
+                onMakeCanonical: { installation in
+                    let targets = selected.installations.filter { !$0.isReadOnly }.map(\.url)
+                    if store.syncSkill(from: installation.url, to: targets) {
+                        Task { await reload() }
+                    }
+                }
+            )
         } else {
             EmptyStateView(
                 title: store.loc("选择一个技能", "Select a skill"),
@@ -148,8 +164,22 @@ private struct SkillDetailCard: View {
     let entry: SkillEntry
     let chinese: Bool
     let store: WorkspaceStore
+    let onInstall: (SkillAgent) -> Void
+    let onMakeCanonical: (SkillInstallation) -> Void
 
     private func loc(_ zh: String, _ en: String) -> String { chinese ? zh : en }
+
+    /// Writable agents that don't yet have this skill — distribution targets.
+    private var installableAgents: [SkillAgent] {
+        let present = Set(entry.agents)
+        return SkillAgent.allCases.filter { agent in
+            !present.contains(agent) && agent.scanDirectories.contains { !$0.isReadOnly }
+        }
+    }
+
+    private var hasWritableCopy: Bool {
+        entry.installations.contains { !$0.isReadOnly }
+    }
 
     var body: some View {
         ScrollView {
@@ -185,6 +215,33 @@ private struct SkillDetailCard: View {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(entry.installations) { installation in
                             installationRow(installation)
+                        }
+                    }
+                }
+
+                if entry.hasDrift, hasWritableCopy {
+                    Text(
+                        loc(
+                            "各副本内容不一致。展开上方某个副本旁的「设为基准」可用它覆盖其它可写副本。",
+                            "Copies differ. Use “Make canonical” on a copy above to overwrite the other writable copies."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                }
+
+                if !installableAgents.isEmpty, hasWritableCopy {
+                    section(loc("分发到", "Distribute to")) {
+                        HStack(spacing: 8) {
+                            ForEach(installableAgents) { agent in
+                                Button {
+                                    onInstall(agent)
+                                } label: {
+                                    Label(agent.displayName, systemImage: "plus")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
                         }
                     }
                 }
@@ -231,6 +288,18 @@ private struct SkillDetailCard: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help(loc("编辑 SKILL.md", "Edit SKILL.md"))
+
+            // Resolve drift: overwrite the other writable copies with this one.
+            if entry.hasDrift, !installation.isReadOnly {
+                Button {
+                    onMakeCanonical(installation)
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.blue)
+                .help(loc("设为基准并覆盖其它副本", "Make canonical (overwrite other copies)"))
+            }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.06)))
