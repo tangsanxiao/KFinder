@@ -30,6 +30,16 @@ struct GitCommitSummary: Sendable, Identifiable, Equatable {
     let relativeDate: String
 }
 
+/// A changed file plus its modification time, for the "Recent changes" list —
+/// the AI-agent workflow's core question: "what did the agent just touch?"
+struct RecentChange: Identifiable, Equatable {
+    let url: URL
+    let status: FileGitStatus
+    let modified: Date
+
+    var id: String { url.path }
+}
+
 /// One git read of a directory: repo info for the status card plus per-path
 /// statuses for the row badges. Immutable snapshot — panes refetch on reload
 /// (FSEvents already triggers reloads on any change, including `.git`).
@@ -52,6 +62,30 @@ struct GitDirectorySnapshot: Sendable, Equatable {
 }
 
 enum GitStatusService {
+    /// Most-recently-modified changed files first. Pure (the mtime lookup is
+    /// injected) so it's unit-testable; deleted files are skipped (no file to
+    /// stat or open). `limit` caps the list for the compact card.
+    static func recentChanges(
+        statuses: [String: FileGitStatus],
+        limit: Int = 12,
+        modificationDate: (String) -> Date?
+    ) -> [RecentChange] {
+        statuses.compactMap { path, status -> RecentChange? in
+            guard status != .deleted, let date = modificationDate(path) else { return nil }
+            return RecentChange(url: URL(fileURLWithPath: path), status: status, modified: date)
+        }
+        .sorted { $0.modified > $1.modified }
+        .prefix(limit)
+        .map { $0 }
+    }
+
+    /// Convenience over a snapshot using the real filesystem mtime.
+    static func recentChanges(in snapshot: GitDirectorySnapshot, limit: Int = 12) -> [RecentChange] {
+        recentChanges(statuses: snapshot.fileStatuses, limit: limit) { path in
+            (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate]) as? Date
+        }
+    }
+
     /// Reads the git state of `directory` off the calling actor.
     /// Returns nil when the directory is not inside a git work tree.
     static func snapshot(for directory: URL) async -> GitDirectorySnapshot? {

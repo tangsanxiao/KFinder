@@ -4,10 +4,15 @@ import SwiftUI
 /// uncommitted-change count, recent commits, plus the agent-bridge actions.
 struct ProjectStatusCard: View {
     let snapshot: GitDirectorySnapshot
+    let recentChanges: [RecentChange]
+    let chinese: Bool
     let claudeEnabled: Bool
     let onAnalyze: () -> Void
     let onOpenClaudeCode: () -> Void
     let onOpenTerminal: () -> Void
+    let onOpenChange: (URL) -> Void
+
+    private func loc(_ zh: String, _ en: String) -> String { chinese ? zh : en }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -18,13 +23,41 @@ struct ProjectStatusCard: View {
                     .font(.system(size: 13, weight: .semibold))
                 Spacer()
                 if snapshot.changedPathCount > 0 {
-                    Text("\(snapshot.changedPathCount) 处未提交")
+                    Text(loc("\(snapshot.changedPathCount) 处未提交", "\(snapshot.changedPathCount) uncommitted"))
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.orange)
                 } else {
-                    Text("工作区干净")
+                    Text(loc("工作区干净", "Clean"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                }
+            }
+
+            if !recentChanges.isEmpty {
+                Divider()
+                Text(loc("最近变更", "Recent changes"))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(recentChanges) { change in
+                        Button {
+                            onOpenChange(change.url)
+                        } label: {
+                            HStack(spacing: 6) {
+                                GitStatusBadge(status: change.status)
+                                Text(change.url.lastPathComponent)
+                                    .font(.system(size: 12))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer(minLength: 4)
+                                Text(Self.relativeFormatter.localizedString(for: change.modified, relativeTo: Date()))
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
 
@@ -67,7 +100,7 @@ struct ProjectStatusCard: View {
                 Button {
                     onOpenTerminal()
                 } label: {
-                    Label("Terminal", systemImage: "terminal")
+                    Label(loc("终端", "Terminal"), systemImage: "terminal")
                 }
             }
             .buttonStyle(.bordered)
@@ -76,6 +109,12 @@ struct ProjectStatusCard: View {
         .padding(14)
         .frame(width: 380)
     }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
 }
 
 /// Sheet for headless `claude -p` runs against the pane's directory. The

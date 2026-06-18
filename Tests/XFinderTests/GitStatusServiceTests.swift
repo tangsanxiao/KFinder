@@ -43,6 +43,32 @@ import Testing
     #expect(snapshot.status(forPath: "/repo/SourcesOther", isDirectory: true) == nil)  // no prefix false-positive
 }
 
+@Test func recentChangesSortsByMtimeSkipsDeletedAndCaps() {
+    let statuses: [String: FileGitStatus] = [
+        "/repo/a.swift": .modified,
+        "/repo/b.swift": .untracked,
+        "/repo/c.swift": .added,
+        "/repo/gone.swift": .deleted,
+    ]
+    let dates: [String: Date] = [
+        "/repo/a.swift": Date(timeIntervalSince1970: 100),
+        "/repo/b.swift": Date(timeIntervalSince1970: 300),
+        "/repo/c.swift": Date(timeIntervalSince1970: 200),
+        "/repo/gone.swift": Date(timeIntervalSince1970: 999),
+    ]
+
+    let all = GitStatusService.recentChanges(statuses: statuses) { dates[$0] }
+    // Newest first; deleted skipped even though it has the latest date.
+    #expect(all.map { $0.url.lastPathComponent } == ["b.swift", "c.swift", "a.swift"])
+
+    let capped = GitStatusService.recentChanges(statuses: statuses, limit: 2) { dates[$0] }
+    #expect(capped.map { $0.url.lastPathComponent } == ["b.swift", "c.swift"])
+
+    // A file whose mtime can't be read is dropped.
+    let missing = GitStatusService.recentChanges(statuses: ["/repo/x": .modified]) { _ in nil }
+    #expect(missing.isEmpty)
+}
+
 @Test func parseLogSplitsHashSubjectDate() {
     let commits = GitStatusService.parseLog("abc1234\tFix the thing\t2 hours ago\ndef5678\tAdd feature\t3 days ago")
     #expect(commits.count == 2)

@@ -722,6 +722,8 @@ struct BrowserPane: View {
             if let gitSnapshot {
                 ProjectStatusCard(
                     snapshot: gitSnapshot,
+                    recentChanges: GitStatusService.recentChanges(in: gitSnapshot),
+                    chinese: store.settings.language.isChineseResolved,
                     claudeEnabled: store.settings.claudeIntegrationEnabled,
                     onAnalyze: {
                         showsProjectCard = false
@@ -734,6 +736,10 @@ struct BrowserPane: View {
                     onOpenTerminal: {
                         showsProjectCard = false
                         store.openTerminal(at: currentURL)
+                    },
+                    onOpenChange: { url in
+                        showsProjectCard = false
+                        revealRecentChange(url)
                     }
                 )
             }
@@ -1566,6 +1572,20 @@ struct BrowserPane: View {
         backStack.append(currentURL)
         currentURL = next
         clearSelection()
+    }
+
+    /// Jumps the pane to a recently-changed file: navigate to its parent
+    /// folder (if not already there), then select it once loaded.
+    private func revealRecentChange(_ url: URL) {
+        onFocus()
+        let parent = url.deletingLastPathComponent()
+        if parent.standardizedFileURL != currentURL.standardizedFileURL {
+            pendingSelectionURL = url
+            navigate(to: parent)
+        } else {
+            _ = selectLoadedFile(at: url)
+            keyboardScrollTarget = liveViewMode == .list ? "\(url.path)-0" : url.path
+        }
     }
 
     private func goUp() {
