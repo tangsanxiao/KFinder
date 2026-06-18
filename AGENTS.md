@@ -47,6 +47,10 @@
   **要求**：处理拖放必须遍历**所有** provider，不能 `providers.first(where:)` 只取第一个。
   **原因**：曾导致多选拖放只移动了一个文件，其余静默丢弃，用户以为全移了。
 
+- **情况**：SwiftUI `.onDrag` 每个视图只能返回**一个** `NSItemProvider`，无法表达多选拖拽。
+  **要求**：应用内多文件拖拽走 store 的 `dragPayload`（onDrag 时记录整组选中 URL，onDrop 时优先消费它，外部 Finder 拖入才回退到 providers）；放置时跳过"已在目标目录"的文件（同目录拖放应是 no-op，不能复制）；文件夹行要自己加 `.onDrop` 才能作为放置目标。
+  **原因**：曾导致①同文件夹拖放复制一份 ②无法拖进面板内子文件夹 ③多选拖到另一面板只移动一个。
+
 - **情况**：layout 和 directories（面板列表）是两份独立状态，曾经只在关面板时对齐。
   **要求**：任何**新增面板**的代码路径（`openInNewPane`、`addDirectories`、未来的导入等）都必须经过 `fitLayoutAfterAddingPanes`：面板数超过 `layout.preferredPaneCount` 时自动升档，但不降档（保留用户选的大布局和占位符）。
   **原因**：曾导致 Single 布局下加第二个面板时被静默挤成上下两行，顶部 Layout 图标却没变——面板与布局状态对不齐。

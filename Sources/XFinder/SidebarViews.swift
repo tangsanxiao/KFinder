@@ -135,9 +135,10 @@ struct SidebarView: View {
                     Button {
                         openDirectory(bookmark.url, title: bookmark.title)
                     } label: {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 8) {
                             Image(systemName: bookmark.systemImage)
-                                .frame(width: 22)
+                                .font(.system(size: 12))
+                                .frame(width: 16)
                                 .foregroundStyle(.blue)
                             Text(bookmark.title)
                                 .lineLimit(1)
@@ -205,9 +206,10 @@ private struct StarSidebarRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: "star")
-                .frame(width: 22)
+                .font(.system(size: 12))
+                .frame(width: 16)
                 .foregroundStyle(.blue)
             Text(star.name)
                 .lineLimit(1)
@@ -243,22 +245,16 @@ struct WorkspaceSidebarRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "rectangle.3.group")
+            Image(systemName: "square.stack")
+                .font(.system(size: 12))
+                .frame(width: 16)
                 .foregroundStyle(isSelected ? .blue : .secondary)
 
             Text(workspace.name)
                 .lineLimit(1)
+                .truncationMode(.middle)
 
-            Spacer()
-
-            Button {
-                delete()
-            } label: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Delete workspace")
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .frame(height: 30)

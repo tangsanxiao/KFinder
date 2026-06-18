@@ -135,6 +135,14 @@ extension View {
     func hoverCursor(_ cursor: NSCursor) -> some View {
         overlay(CursorRectView(cursor: cursor))
     }
+
+    /// Applies `transform` only when `condition` holds. `condition` must be
+    /// stable for the view's lifetime (it changes the view's structural
+    /// identity), which fits per-row "is this a folder" drop targeting.
+    @ViewBuilder
+    func `if`<Transformed: View>(_ condition: Bool, transform: (Self) -> Transformed) -> some View {
+        if condition { transform(self) } else { self }
+    }
 }
 
 enum ResizePhase {

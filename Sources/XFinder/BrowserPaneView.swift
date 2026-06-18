@@ -113,7 +113,7 @@ struct BrowserPane: View {
         }
         .simultaneousGesture(TapGesture().onEnded { onFocus() })
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-            handleFileDrop(providers)
+            dropOnPaneBackground(providers)
         }
         .onAppear {
             // Switching workspaces destroys and recreates panes, resetting
@@ -215,7 +215,10 @@ struct BrowserPane: View {
                     trash: {
                         onFocus()
                         trashTargets(of: file)
-                    }
+                    },
+                    canBrowseInline: canBrowseInline(file),
+                    onBeginDrag: { beginDrag(file) },
+                    dropInto: { providers in dropOnFolder(file.url, providers: providers) }
                 )
             }
         }
@@ -273,7 +276,9 @@ struct BrowserPane: View {
                                 claudeEnabled: store.settings.claudeIntegrationEnabled,
                                 askClaude: { askClaudeAboutSelection(row.file) },
                                 copyTo: { destination in copyTargets(of: row.file, to: destination) },
-                                moveTo: { destination in moveTargets(of: row.file, to: destination) }
+                                moveTo: { destination in moveTargets(of: row.file, to: destination) },
+                                onBeginDrag: { beginDrag(row.file) },
+                                dropInto: { providers in dropOnFolder(row.file.url, providers: providers) }
                             )
                             .frame(width: proxy.size.width, alignment: .leading)
                             .clipped()
@@ -1120,7 +1125,9 @@ struct BrowserPane: View {
                     reveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) },
                     trash: { trashTargets(of: file) },
                     copyTo: { destination in copyTargets(of: file, to: destination) },
-                    moveTo: { destination in moveTargets(of: file, to: destination) }
+                    moveTo: { destination in moveTargets(of: file, to: destination) },
+                    onBeginDrag: { beginDrag(file) },
+                    dropInto: { providers in dropOnFolder(file.url, providers: providers) }
                 )
             }
         }
@@ -1507,9 +1514,49 @@ struct BrowserPane: View {
         renameDraft = ""
     }
 
-    private func handleFileDrop(_ providers: [NSItemProvider]) -> Bool {
-        // Move every dropped file, not just the first provider — a multi-file
-        // drag delivers one NSItemProvider per file.
+    /// Records the whole selection (or just `file` when it isn't selected) as
+    /// the in-app drag payload, so dropping moves every dragged file.
+    private func beginDrag(_ file: BrowserFileItem) {
+        let ids = selection.contains(file.id) ? selection : [file.id]
+        store.dragPayload = loadedFiles.filter { ids.contains($0.id) }.map(\.url)
+    }
+
+    /// Drop on the pane's empty area. An in-app drag dropped here does nothing
+    /// (Finder-style: you move files by dropping ONTO a folder, not into empty
+    /// space) — so a drag released in place never relocates the file. External
+    /// drags (from Finder) drop into the current folder.
+    private func dropOnPaneBackground(_ providers: [NSItemProvider]) -> Bool {
+        if !store.dragPayload.isEmpty {
+            store.dragPayload = []
+            return false
+        }
+        return handleExternalDrop(providers, into: currentURL)
+    }
+
+    /// Drop onto a folder row. In-app drags move the whole payload into the
+    /// folder; external drags move the providers in. Files already in the
+    /// destination are skipped (dropping a folder onto itself / a file onto its
+    /// own folder is a no-op, never a duplicate).
+    @discardableResult
+    private func dropOnFolder(_ destination: URL, providers: [NSItemProvider]) -> Bool {
+        let payload = store.dragPayload
+        if !payload.isEmpty {
+            store.dragPayload = []
+            let dest = destination.standardizedFileURL
+            let targets = payload.filter { url in
+                url.standardizedFileURL != dest
+                    && url.deletingLastPathComponent().standardizedFileURL != dest
+            }
+            guard !targets.isEmpty else { return false }
+            onFocus()
+            for url in targets { store.move(url, toDirectory: destination) }
+            scheduleReload()
+            return true
+        }
+        return handleExternalDrop(providers, into: destination)
+    }
+
+    private func handleExternalDrop(_ providers: [NSItemProvider], into destination: URL) -> Bool {
         let fileProviders = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }
         guard !fileProviders.isEmpty else { return false }
 
@@ -1518,7 +1565,7 @@ struct BrowserPane: View {
                 guard let sourceURL = droppedFileURL(from: item) else { return }
                 Task { @MainActor in
                     onFocus()
-                    store.move(sourceURL, toDirectory: currentURL)
+                    store.move(sourceURL, toDirectory: destination)
                     scheduleReload()
                 }
             }

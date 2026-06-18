@@ -30,6 +30,10 @@ final class WorkspaceStore: ObservableObject {
     /// Drives the Settings sheet; toggled from the sidebar gear and the
     /// standard ⌘, menu command. Not persisted.
     @Published var isSettingsPresented = false
+    /// Files currently being dragged inside the app — the whole selection, so a
+    /// multi-file drag moves every file (SwiftUI `.onDrag` only carries one
+    /// provider). Set at drag start, consumed and cleared on drop.
+    @Published var dragPayload: [URL] = []
     @Published var settings = AppSettings() {
         didSet {
             guard settings != oldValue else { return }

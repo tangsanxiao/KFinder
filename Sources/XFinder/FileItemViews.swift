@@ -97,7 +97,10 @@ struct FileRow: View {
     let askClaude: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
+    let onBeginDrag: () -> Void
+    let dropInto: ([NSItemProvider]) -> Bool
     @FocusState private var isRenameFieldFocused: Bool
+    @State private var isDropTargeted = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -146,11 +149,25 @@ struct FileRow: View {
         .padding(.horizontal, 14)
         .frame(height: FileRowMetrics.height)
         .background(rowBackground)
+        .overlay {
+            // Drop highlight when dragging files onto a folder row.
+            if isDropTargeted, canBrowseInline {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .onDrag {
-            NSItemProvider(object: file.url as NSURL)
+            onBeginDrag()
+            return NSItemProvider(object: file.url as NSURL)
+        }
+        .if(canBrowseInline) { view in
+            view.onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                dropInto(providers)
+            }
         }
         .onChange(of: isRenaming) { newValue in
             if newValue {
@@ -262,7 +279,11 @@ struct IconFileCell: View {
     let cancelRename: () -> Void
     let open: () -> Void
     let trash: () -> Void
+    let canBrowseInline: Bool
+    let onBeginDrag: () -> Void
+    let dropInto: ([NSItemProvider]) -> Bool
     @FocusState private var isRenameFieldFocused: Bool
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(spacing: 6) {
@@ -275,11 +296,24 @@ struct IconFileCell: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(iconSelectionColor)
         )
+        .overlay {
+            if isDropTargeted, canBrowseInline {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .onDrag {
-            NSItemProvider(object: file.url as NSURL)
+            onBeginDrag()
+            return NSItemProvider(object: file.url as NSURL)
+        }
+        .if(canBrowseInline) { view in
+            view.onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                dropInto(providers)
+            }
         }
         .onChange(of: isRenaming) { newValue in
             if newValue {
@@ -360,7 +394,10 @@ struct ColumnFileRow: View {
     let trash: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
+    let onBeginDrag: () -> Void
+    let dropInto: ([NSItemProvider]) -> Bool
     @FocusState private var isRenameFieldFocused: Bool
+    @State private var isDropTargeted = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -380,11 +417,24 @@ struct ColumnFileRow: View {
         .padding(.horizontal, 12)
         .frame(height: 30)
         .background(Rectangle().fill(selectionColor))
+        .overlay {
+            if isDropTargeted, canBrowseInline {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { select() })
         .simultaneousGesture(TapGesture(count: 2).onEnded { open() })
         .onDrag {
-            NSItemProvider(object: file.url as NSURL)
+            onBeginDrag()
+            return NSItemProvider(object: file.url as NSURL)
+        }
+        .if(canBrowseInline) { view in
+            view.onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                dropInto(providers)
+            }
         }
         .onChange(of: isRenaming) { newValue in
             if newValue {
