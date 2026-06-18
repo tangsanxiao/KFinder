@@ -87,6 +87,9 @@ struct AppSettings: Codable, Equatable {
     /// When on, the top toolbar shows the Activity & Errors (trace) button.
     var debugModeEnabled = false
     var language: AppLanguage = .system
+    /// Canonical skill library directory; empty = default `~/Skills`. Skills
+    /// consolidated here are symlinked into each agent (one source of truth).
+    var skillLibraryPath = ""
 }
 
 /// Coarse, rule-based file classification (no LLM) for the pane's category

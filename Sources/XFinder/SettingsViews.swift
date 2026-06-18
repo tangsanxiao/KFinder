@@ -25,6 +25,8 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     languageSection
                     Divider()
+                    skillsSection
+                    Divider()
                     claudeSection
                     Divider()
                     debugSection
@@ -52,6 +54,30 @@ struct SettingsView: View {
             .pickerStyle(.segmented)
             .labelsHidden()
         }
+    }
+
+    private var skillsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.loc("技能库", "Skill library"))
+                .font(.system(size: 13, weight: .semibold))
+            TextField(
+                store.loc("留空则使用 ~/Skills", "Leave empty for ~/Skills"),
+                text: skillLibraryBinding
+            )
+            .textFieldStyle(.roundedBorder)
+            Text(
+                store.loc(
+                    "「收入技能库并链接」会把技能移到这里,并在各 agent 目录建软链接(单一来源,编辑一次处处生效)。",
+                    "“Consolidate into library” moves skills here and symlinks them into each agent (single source — edit once, applies everywhere)."
+                )
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var skillLibraryBinding: Binding<String> {
+        Binding(get: { store.settings.skillLibraryPath }, set: { store.settings.skillLibraryPath = $0 })
     }
 
     private var claudeSection: some View {

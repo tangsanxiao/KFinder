@@ -71,7 +71,7 @@ struct SidebarView: View {
                 .font(.system(size: 12))
                 .frame(width: 16)
                 .foregroundStyle(store.showsSkillHub ? .blue : .secondary)
-            Text(store.loc("技能中心", "Skill Hub"))
+            Text(store.loc("Skill Center", "Skill Center"))
                 .lineLimit(1)
             Spacer(minLength: 0)
         }
@@ -106,7 +106,8 @@ struct SidebarView: View {
             ForEach(store.workspaces) { workspace in
                 WorkspaceSidebarRow(
                     workspace: workspace,
-                    isSelected: workspace.id == store.selectedWorkspaceID,
+                    // No workspace looks selected while the Skill Center is open.
+                    isSelected: !store.showsSkillHub && workspace.id == store.selectedWorkspaceID,
                     select: {
                         store.showsSkillHub = false
                         store.selectedWorkspaceID = workspace.id

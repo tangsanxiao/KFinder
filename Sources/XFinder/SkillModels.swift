@@ -46,6 +46,9 @@ struct SkillInstallation: Identifiable, Equatable, Sendable {
     let isReadOnly: Bool
     /// Stable content hash of SKILL.md, for drift detection across copies.
     let contentHash: String
+    /// True when this location is a symlink (into the canonical library) rather
+    /// than an independent copy.
+    let isSymlink: Bool
 
     var id: String { url.path }
 }
@@ -70,6 +73,13 @@ struct SkillEntry: Identifiable, Equatable, Sendable {
     /// stale" trap.
     var hasDrift: Bool {
         Set(installations.map(\.contentHash)).count > 1
+    }
+
+    /// True when every writable copy is a symlink — i.e. fully consolidated
+    /// into the canonical library (single source of truth, no drift possible).
+    var isConsolidated: Bool {
+        let writable = installations.filter { !$0.isReadOnly }
+        return !writable.isEmpty && writable.allSatisfy(\.isSymlink)
     }
 }
 
@@ -123,6 +133,7 @@ enum SkillCatalog {
         let isReadOnly: Bool
         let contentHash: String
         let metadata: Metadata
+        var isSymlink: Bool = false
     }
 
     /// Groups raw discoveries into one entry per skill name (frontmatter `name`,
@@ -146,7 +157,8 @@ enum SkillCatalog {
                 license: group.compactMap { $0.metadata.license }.first,
                 installations: group.map {
                     SkillInstallation(
-                        agent: $0.agent, url: $0.url, isReadOnly: $0.isReadOnly, contentHash: $0.contentHash)
+                        agent: $0.agent, url: $0.url, isReadOnly: $0.isReadOnly, contentHash: $0.contentHash,
+                        isSymlink: $0.isSymlink)
                 }
             )
         }

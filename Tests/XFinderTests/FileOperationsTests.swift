@@ -67,6 +67,35 @@ private func makeDir(_ url: URL) throws {
 }
 
 @MainActor
+@Test func consolidateSkillMovesToLibraryAndSymlinksLocations() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    store.settings.skillLibraryPath = root.appendingPathComponent("Library").path
+
+    let copyA = root.appendingPathComponent("claude/my-skill", isDirectory: true)
+    let copyB = root.appendingPathComponent("trae/my-skill", isDirectory: true)
+    try makeDir(copyA)
+    try makeDir(copyB)
+    try writeFile(copyA.appendingPathComponent("SKILL.md"), "canonical")
+    try writeFile(copyB.appendingPathComponent("SKILL.md"), "stale")
+
+    #expect(store.consolidateSkill(name: "my-skill", canonicalSource: copyA, writableLocations: [copyA, copyB]))
+
+    let libraryEntry = root.appendingPathComponent("Library/my-skill")
+    #expect(FileManager.default.fileExists(atPath: libraryEntry.appendingPathComponent("SKILL.md").path))
+
+    // Both locations are now symlinks pointing at the library entry.
+    for location in [copyA, copyB] {
+        let isLink = (try? location.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
+        #expect(isLink)
+        // Reading through the symlink yields the canonical content.
+        let content = try String(contentsOf: location.appendingPathComponent("SKILL.md"), encoding: .utf8)
+        #expect(content == "canonical")
+    }
+}
+
+@MainActor
 @Test func copyIntoFolderWithExistingNameDeduplicates() throws {
     let (store, root) = try makeFixture()
     defer { try? FileManager.default.removeItem(at: root) }

@@ -453,6 +453,71 @@ final class WorkspaceStore: ObservableObject {
         try FileManager.default.copyItem(at: source, to: dest)
     }
 
+    /// The canonical skill library directory (default `~/Skills`).
+    var skillLibraryURL: URL {
+        let path = settings.skillLibraryPath.trimmingCharacters(in: .whitespaces)
+        if path.isEmpty {
+            return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Skills", isDirectory: true)
+        }
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+    }
+
+    /// Consolidates a skill into the library and replaces each writable copy
+    /// with a symlink → one source of truth, no more drift. `canonicalSource`
+    /// is the copy whose content seeds the library entry. Read-only/built-in
+    /// copies are left untouched.
+    @discardableResult
+    func consolidateSkill(name: String, canonicalSource: URL, writableLocations: [URL]) -> Bool {
+        let library = skillLibraryURL
+        let target = library.appendingPathComponent(name, isDirectory: true)
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(at: library, withIntermediateDirectories: true)
+            // Seed/refresh the library entry from the chosen copy.
+            try replaceDirectory(at: target, withContentsOf: canonicalSource)
+            // Point every writable location at the library via a symlink.
+            for location in writableLocations {
+                if fileManager.fileExists(atPath: location.path) {
+                    try fileManager.removeItem(at: location)
+                }
+                try fileManager.createSymbolicLink(at: location, withDestinationURL: target)
+            }
+            statusMessage = "Consolidated \(name) into the skill library"
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Consolidate skill failed"
+            return false
+        }
+    }
+
+    /// Symlinks a library skill into an agent's writable skills directory.
+    @discardableResult
+    func linkLibrarySkill(name: String, to agent: SkillAgent) -> Bool {
+        guard let directory = agent.scanDirectories.first(where: { !$0.isReadOnly })?.url else {
+            lastError = "\(agent.displayName) 没有可写的技能目录。"
+            return false
+        }
+        let target = skillLibraryURL.appendingPathComponent(name, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            lastError = "技能库中没有 \(name)。"
+            return false
+        }
+        let link = directory.appendingPathComponent(name)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            if FileManager.default.fileExists(atPath: link.path) {
+                try FileManager.default.removeItem(at: link)
+            }
+            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+            statusMessage = "Linked \(name) to \(agent.displayName)"
+            return true
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
+    }
+
     // MARK: - Stars (favourite directories)
 
     func isStarred(_ url: URL) -> Bool {

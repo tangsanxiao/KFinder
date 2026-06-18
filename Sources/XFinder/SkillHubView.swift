@@ -28,7 +28,7 @@ struct SkillHubView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text(store.loc("技能中心", "Skill Hub"))
+            Text(store.loc("Skill Center", "Skill Center"))
                 .font(.system(size: 15, weight: .semibold))
             if !isLoading {
                 Text("\(entries.count)")
@@ -90,14 +90,30 @@ struct SkillHubView: View {
                 chinese: chinese,
                 store: store,
                 onInstall: { agent in
-                    guard let source = selected.installations.first(where: { !$0.isReadOnly })?.url else { return }
-                    if store.installSkill(from: source, to: agent) {
-                        Task { await reload() }
+                    // Consolidated skills distribute by symlink (stay single-source);
+                    // otherwise copy an independent installation.
+                    let success: Bool
+                    if selected.isConsolidated {
+                        success = store.linkLibrarySkill(name: selected.name, to: agent)
+                    } else if let source = selected.installations.first(where: { !$0.isReadOnly })?.url {
+                        success = store.installSkill(from: source, to: agent)
+                    } else {
+                        success = false
                     }
+                    if success { Task { await reload() } }
                 },
                 onMakeCanonical: { installation in
                     let targets = selected.installations.filter { !$0.isReadOnly }.map(\.url)
                     if store.syncSkill(from: installation.url, to: targets) {
+                        Task { await reload() }
+                    }
+                },
+                onConsolidate: {
+                    let writable = selected.installations.filter { !$0.isReadOnly }
+                    guard let canonical = writable.first?.url else { return }
+                    if store.consolidateSkill(
+                        name: selected.name, canonicalSource: canonical, writableLocations: writable.map(\.url))
+                    {
                         Task { await reload() }
                     }
                 }
@@ -134,6 +150,12 @@ private struct SkillRow: View {
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if entry.isConsolidated {
+                    Image(systemName: "link")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.green)
+                        .help(chinese ? "已统一到技能库" : "Consolidated in library")
+                }
                 if entry.hasDrift {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 9))
@@ -166,6 +188,7 @@ private struct SkillDetailCard: View {
     let store: WorkspaceStore
     let onInstall: (SkillAgent) -> Void
     let onMakeCanonical: (SkillInstallation) -> Void
+    let onConsolidate: () -> Void
 
     private func loc(_ zh: String, _ en: String) -> String { chinese ? zh : en }
 
@@ -200,6 +223,11 @@ private struct SkillDetailCard: View {
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.orange)
                         }
+                        if entry.isConsolidated {
+                            Label(loc("已统一到技能库", "Consolidated"), systemImage: "link")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.green)
+                        }
                     }
                 }
 
@@ -228,6 +256,28 @@ private struct SkillDetailCard: View {
                     )
                     .font(.caption)
                     .foregroundStyle(.orange)
+                }
+
+                if hasWritableCopy, !entry.isConsolidated {
+                    section(loc("统一管理", "Consolidate")) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Button {
+                                onConsolidate()
+                            } label: {
+                                Label(loc("收入技能库并链接", "Consolidate into library"), systemImage: "link.badge.plus")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            Text(
+                                loc(
+                                    "把该技能移入统一库,各 agent 改为软链接——编辑一次,处处生效,不再漂移。",
+                                    "Moves this skill into the library and replaces each agent copy with a symlink — edit once, applies everywhere, no more drift."
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 if !installableAgents.isEmpty, hasWritableCopy {

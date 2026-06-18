@@ -13,19 +13,22 @@ enum SkillScanner {
                 for directory in agent.scanDirectories {
                     guard
                         let children = try? fileManager.contentsOfDirectory(
-                            at: directory.url, includingPropertiesForKeys: [.isDirectoryKey])
+                            at: directory.url, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
                     else { continue }
 
                     for child in children {
                         let skillFile = child.appendingPathComponent("SKILL.md")
                         guard let content = try? String(contentsOf: skillFile, encoding: .utf8) else { continue }
+                        let isSymlink =
+                            (try? child.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink ?? false
                         raws.append(
                             SkillCatalog.RawSkill(
                                 agent: agent,
                                 url: child,
                                 isReadOnly: directory.isReadOnly,
                                 contentHash: SkillCatalog.stableHash(content),
-                                metadata: SkillCatalog.metadata(from: content)
+                                metadata: SkillCatalog.metadata(from: content),
+                                isSymlink: isSymlink
                             ))
                     }
                 }
