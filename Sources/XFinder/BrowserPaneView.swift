@@ -146,6 +146,8 @@ struct BrowserPane: View {
                 chinese: store.settings.language.isChineseResolved,
                 isLoading: diffLoading,
                 lines: diffLines,
+                claudeEnabled: store.settings.claudeIntegrationEnabled,
+                onExplain: { explainCurrentDiff() },
                 onClose: { showsDiff = false }
             )
         }
@@ -1652,6 +1654,21 @@ struct BrowserPane: View {
             if Task.isCancelled { return }
             diffLines = GitStatusService.parseDiff(output ?? "")
             diffLoading = false
+        }
+    }
+
+    /// Hands the currently-shown diff to Claude for an explanation (3-F):
+    /// closes the diff sheet and opens the analysis sheet with the diff inlined
+    /// as context, so Claude reasons about the actual edit.
+    private func explainCurrentDiff() {
+        let diffText = diffLines.map(\.text).joined(separator: "\n")
+        let prompt = ClaudeBridge.explainDiffPrompt(fileName: diffFileName, diff: diffText)
+        showsDiff = false
+        // Let the diff sheet finish dismissing before presenting the analysis
+        // sheet — SwiftUI drops the second present if they overlap in one tick.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            startAnalysis(question: prompt, autoRun: true)
         }
     }
 

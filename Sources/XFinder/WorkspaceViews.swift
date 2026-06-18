@@ -158,29 +158,19 @@ private struct FinderLikeToolbar: View {
                 .buttonStyle(.plain)
                 .padding(.vertical, 4)
 
-                Button {
-                    store.importOpenFinderWindows()
-                    isLayoutPopoverShown = false
-                } label: {
-                    Label(store.loc("导入 Finder 窗口", "Import Finder Windows"), systemImage: "macwindow.badge.plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-                .padding(.vertical, 4)
-                .help(
-                    store.loc(
-                        "把当前打开的 Finder 窗口作为面板导入。", "Import the folders from currently open Finder windows as panes."))
+                // Restart is a debug affordance — only when Debug mode is on.
+                if store.settings.debugModeEnabled {
+                    Divider()
 
-                Divider()
-
-                Button {
-                    AppRelauncher.relaunch()
-                } label: {
-                    Label(store.loc("重启应用（调试）", "Restart App (debug)"), systemImage: "arrow.clockwise.circle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        AppRelauncher.relaunch()
+                    } label: {
+                        Label(store.loc("重启应用（调试）", "Restart App (debug)"), systemImage: "arrow.clockwise.circle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
-                .padding(.vertical, 4)
             }
             .padding(12)
             .frame(width: 220)

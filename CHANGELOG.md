@@ -7,6 +7,7 @@ All notable changes to XFinder are recorded here. Newest first.
 ### Added
 - Recent changes in the project status card: the files git reports as changed (modified / untracked / added), newest-first by modification time, each with its status badge and a relative timestamp. Click one to jump the pane to it and select it — built for reviewing what an agent just touched. Deterministic (no LLM); deleted files are skipped.
 - Diff viewer from the recent-changes list: a ± button on each entry opens that file's `git diff` in a sheet with add/delete line coloring (untracked/added files show the whole file as additions). No editor or terminal needed to review an agent's edits.
+- "Explain with Claude" in the diff viewer (when Claude integration is on): sends that file's diff to the local `claude` CLI as context so the explanation is about the actual edit — what changed, the likely intent, and any risks — rather than a generic project summary.
 - Bilingual UI (Chinese / English) with a Language setting (System / 中文 / English); System follows the OS. Tooltips, toolbar menus, the layout popover, settings, and the filter / go-to-folder dialogs all switch language.
 - Settings panel (sidebar gear at bottom-left): Claude integration is opt-in (off by default) with an optional custom `claude` CLI path; a Debug-mode toggle; and the What's New panel. When Claude is off, all Claude actions are hidden so the default file-manager experience stays clean.
 - Category quick-filter in each pane toolbar (rule-based, no LLM): narrow the listing to documents / code / data / images / archives / logs / build-and-dependency noise — built for the AI-agent workflow where a run leaves these mixed together. Folders stay visible so you can still navigate while filtering.
@@ -53,6 +54,8 @@ All notable changes to XFinder are recorded here. Newest first.
 - `AGENTS.md` (collaboration rules) and `ARCHITECTURE.md`.
 
 ### Changed
+- The Layout popover dropped "Import Finder Windows"; "Restart App (debug)" now appears only when Debug mode is enabled.
+- README rewritten: separate English / 中文 sections, features split into "AI agent workflow" vs "basic file management", removed the acknowledgements section.
 - View mode control moved from the top toolbar into each pane's own toolbar (a menu button showing the current mode) — it always was pane-local state; the top-level segmented picker implied a global switch and dominated the toolbar's width.
 - Top toolbar buttons (sidebar, layout, activity, what's new) are now uniform 26pt icon buttons with the same immediate hover tips as the pane toolbar.
 - The Layout popover header shows just the layout name (plus real rows×columns only when panes overflow the preset); the pane-count prefix was noise.

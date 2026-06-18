@@ -139,6 +139,8 @@ struct DiffSheet: View {
     let chinese: Bool
     let isLoading: Bool
     let lines: [DiffLine]
+    let claudeEnabled: Bool
+    let onExplain: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -147,6 +149,14 @@ struct DiffSheet: View {
                 Label(chinese ? "差异 — \(fileName)" : "Diff — \(fileName)", systemImage: "plusminus")
                     .font(.headline)
                 Spacer()
+                if claudeEnabled, !isLoading, !lines.isEmpty {
+                    Button {
+                        onExplain()
+                    } label: {
+                        Label(chinese ? "用 Claude 解释" : "Explain with Claude", systemImage: "sparkles")
+                    }
+                    .controlSize(.small)
+                }
                 Button(chinese ? "关闭" : "Close") { onClose() }
                     .keyboardShortcut(.cancelAction)
             }

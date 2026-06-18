@@ -24,6 +24,18 @@ enum ClaudeBridge {
         }
     }
 
+    /// Prompt for explaining a specific change, with the diff inlined so Claude
+    /// reasons about the actual edit rather than re-scanning the project.
+    static func explainDiffPrompt(fileName: String, diff: String) -> String {
+        """
+        用中文解释下面这个文件「\(fileName)」的本次改动：\
+        1) 改了什么；2) 为什么可能这么改 / 意图；3) 有没有需要注意的风险或副作用。\
+        200 字以内，直接给结论。以下是 git diff：
+
+        \(diff)
+        """
+    }
+
     /// Prompt prefix for "ask about these files" — relative paths follow.
     static func selectionPrompt(for paths: [String]) -> String {
         "简要说明下列文件/文件夹的内容、用途和当前状态（如有 git 改动一并说明），中文回答：\n"
