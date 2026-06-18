@@ -15,6 +15,7 @@ struct SidebarView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    skillHubEntry
                     workspaceSection
                     starsSection
                     bookmarksSection
@@ -62,6 +63,27 @@ struct SidebarView: View {
         .frame(height: 36)
     }
 
+    /// Entry into the cross-agent Skill Hub. Highlighted when active; selecting
+    /// a workspace switches back to the file panes.
+    private var skillHubEntry: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 12))
+                .frame(width: 16)
+                .foregroundStyle(store.showsSkillHub ? .blue : .secondary)
+            Text(store.loc("技能中心", "Skill Hub"))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 30)
+        .background(
+            Rectangle().fill(store.showsSkillHub ? Color.accentColor.opacity(0.18) : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { store.showsSkillHub = true }
+    }
+
     private var workspaceSection: some View {
         VStack(spacing: 6) {
             HStack {
@@ -86,6 +108,7 @@ struct SidebarView: View {
                     workspace: workspace,
                     isSelected: workspace.id == store.selectedWorkspaceID,
                     select: {
+                        store.showsSkillHub = false
                         store.selectedWorkspaceID = workspace.id
                         focusedDirectoryID = workspace.directories.first?.id
                     },
@@ -157,6 +180,7 @@ struct SidebarView: View {
     /// Opens a sidebar directory: fills a selected "待添加" placeholder with a new
     /// pane, otherwise retargets the focused pane.
     private func openDirectory(_ url: URL, title: String) {
+        store.showsSkillHub = false
         if focusedDirectoryID == nil {
             // No pane focused — a "待添加" placeholder is the target. Add a new
             // pane and focus it (never retarget the first pane).

@@ -23,11 +23,15 @@ struct ContentView: View {
                 Divider()
             }
 
-            WorkspaceDetailView(
-                focusedDirectoryID: focusedDirectoryID,
-                paneViewModes: $paneViewModes,
-                isSidebarVisible: $isSidebarVisible
-            )
+            if store.showsSkillHub {
+                SkillHubView(isSidebarVisible: isSidebarVisible)
+            } else {
+                WorkspaceDetailView(
+                    focusedDirectoryID: focusedDirectoryID,
+                    paneViewModes: $paneViewModes,
+                    isSidebarVisible: $isSidebarVisible
+                )
+            }
         }
         // Sidebar toggle pinned at the top-left next to the traffic lights
         // (Claude-desktop style): it stays put while the sidebar slides.
