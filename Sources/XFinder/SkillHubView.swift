@@ -11,19 +11,88 @@ struct SkillHubView: View {
     @State private var entries: [SkillEntry] = []
     @State private var isLoading = true
     @State private var selectedID: SkillEntry.ID?
+    @State private var stateFilter: SkillStateFilter = .all
+    @State private var agentFilter: SkillAgent?
+
+    private enum SkillStateFilter: Hashable {
+        case all, consolidated, notConsolidated
+    }
 
     private var selected: SkillEntry? {
         entries.first { $0.id == selectedID }
+    }
+
+    /// Agents that actually have at least one skill, in registry order — the
+    /// agent filter chips are derived from reality, not a fixed list.
+    private var presentAgents: [SkillAgent] {
+        SkillAgent.allCases.filter { agent in entries.contains { $0.agents.contains(agent) } }
+    }
+
+    private var filteredEntries: [SkillEntry] {
+        entries.filter { entry in
+            switch stateFilter {
+            case .all: break
+            case .consolidated where !entry.isConsolidated: return false
+            case .notConsolidated where entry.isConsolidated: return false
+            default: break
+            }
+            if let agentFilter, !entry.agents.contains(agentFilter) { return false }
+            return true
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
+            if !isLoading, !entries.isEmpty {
+                filterBar
+                Divider()
+            }
             content
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .task { await reload() }
+    }
+
+    private var filterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                filterChip(loc("全部", "All"), active: stateFilter == .all && agentFilter == nil) {
+                    stateFilter = .all
+                    agentFilter = nil
+                }
+                Divider().frame(height: 14)
+                filterChip(loc("已统一", "Consolidated"), active: stateFilter == .consolidated) {
+                    stateFilter = stateFilter == .consolidated ? .all : .consolidated
+                }
+                filterChip(loc("未统一", "Not consolidated"), active: stateFilter == .notConsolidated) {
+                    stateFilter = stateFilter == .notConsolidated ? .all : .notConsolidated
+                }
+                if !presentAgents.isEmpty {
+                    Divider().frame(height: 14)
+                    ForEach(presentAgents) { agent in
+                        filterChip(agent.displayName, active: agentFilter == agent) {
+                            agentFilter = agentFilter == agent ? nil : agent
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, isSidebarVisible ? 14 : 18)
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func filterChip(_ title: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(active ? Color.accentColor : Color.secondary.opacity(0.12)))
+                .foregroundStyle(active ? Color.white : Color.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     private var header: some View {
@@ -62,7 +131,7 @@ struct SkillHubView: View {
                     "未在已知的 agent 目录中找到 SKILL.md。", "No SKILL.md found in the known agent directories."))
         } else {
             HStack(spacing: 0) {
-                skillList.frame(width: 280)
+                skillList.frame(width: 420)
                 Divider()
                 detail.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -71,13 +140,19 @@ struct SkillHubView: View {
 
     private var skillList: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
-                ForEach(entries) { entry in
+            // Two-column grid: more skills visible at once, detail panel stays
+            // compact on the right.
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(filteredEntries) { entry in
                     SkillRow(entry: entry, isSelected: entry.id == selectedID, chinese: chinese)
                         .contentShape(Rectangle())
                         .onTapGesture { selectedID = entry.id }
                 }
             }
+            .padding(10)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
@@ -127,6 +202,7 @@ struct SkillHubView: View {
     }
 
     private var chinese: Bool { store.settings.language.isChineseResolved }
+    private func loc(_ zh: String, _ en: String) -> String { store.loc(zh, en) }
 
     private func reload() async {
         isLoading = true
@@ -175,10 +251,17 @@ private struct SkillRow: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.secondary.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 1.5)
+        )
     }
 }
 
@@ -204,6 +287,33 @@ private struct SkillDetailCard: View {
         entry.installations.contains { !$0.isReadOnly }
     }
 
+    /// SKILL.md modification time of the first installation.
+    private var lastModified: Date? {
+        guard let url = entry.installations.first?.url else { return nil }
+        let skillFile = url.appendingPathComponent("SKILL.md")
+        return (try? skillFile.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
+    /// Human size of the first installation's folder.
+    private var primarySize: String? {
+        guard let url = entry.installations.first?.url else { return nil }
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: url, includingPropertiesForKeys: [.fileSizeKey], options: [.skipsHiddenFiles])
+        else { return nil }
+        var total = 0
+        for case let fileURL as URL in enumerator {
+            total += (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+        }
+        return ByteCountFormatter.string(fromByteCount: Int64(total), countStyle: .file)
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -211,12 +321,21 @@ private struct SkillDetailCard: View {
                     Text(entry.name)
                         .font(.system(size: 20, weight: .semibold))
                         .textSelection(.enabled)
-                    HStack(spacing: 8) {
+                    FlowLayout(spacing: 6, lineSpacing: 6) {
                         metaChip(
                             label: loc("版本", "Version"),
-                            value: entry.version ?? loc("未标注", "unspecified"))
-                        if let license = entry.license {
-                            metaChip(label: loc("许可", "License"), value: license)
+                            value: entry.version ?? loc("未标注", "—"))
+                        metaChip(
+                            label: loc("许可", "License"),
+                            value: entry.license ?? loc("未标注", "—"))
+                        metaChip(
+                            label: loc("安装", "Installs"),
+                            value: "\(entry.installations.count)")
+                        if let modified = lastModified {
+                            metaChip(label: loc("更新", "Updated"), value: Self.dateFormatter.string(from: modified))
+                        }
+                        if let size = primarySize {
+                            metaChip(label: loc("大小", "Size"), value: size)
                         }
                         if entry.hasDrift {
                             Label(loc("副本不一致", "Copies differ"), systemImage: "exclamationmark.triangle.fill")

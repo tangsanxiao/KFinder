@@ -4,24 +4,28 @@ import Foundation
 /// The registry of where each one keeps its skills — the basis for scanning a
 /// scattered skill landscape into one catalog.
 enum SkillAgent: String, CaseIterable, Identifiable, Sendable {
-    case claudeCode
+    case claude
     case traeCN
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .claudeCode: "Claude Code"
+        case .claude: "Claude"
         case .traeCN: "Trae CN"
         }
     }
 
     /// Directories to scan, relative to the user's home. `readOnly` marks
-    /// vendor/builtin skill sets that must not be edited or deleted.
+    /// vendor/builtin skill sets that must not be edited or deleted;
+    /// `recursive` finds SKILL.md at any depth (for nested plugin layouts).
     var scanDirectories: [SkillScanDirectory] {
         let home = FileManager.default.homeDirectoryForCurrentUser
         switch self {
-        case .claudeCode:
+        case .claude:
+            // Claude Code / Claude CLI share one personal skills dir. (Claude
+            // Desktop's per-session plugin caches are ephemeral and not
+            // user-managed, so they're intentionally not scanned.)
             return [SkillScanDirectory(url: home.appendingPathComponent(".claude/skills"), isReadOnly: false)]
         case .traeCN:
             return [
@@ -36,6 +40,7 @@ enum SkillAgent: String, CaseIterable, Identifiable, Sendable {
 struct SkillScanDirectory: Sendable, Equatable {
     let url: URL
     let isReadOnly: Bool
+    var isRecursive: Bool = false
 }
 
 /// One on-disk copy of a skill, under a specific agent.

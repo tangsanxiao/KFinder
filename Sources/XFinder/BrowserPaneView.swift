@@ -441,6 +441,12 @@ struct BrowserPane: View {
         case 5 where modifiers.contains(.command) && modifiers.contains(.shift):  // Cmd+Shift+G
             showsGoToPath = true
             return nil
+        case 8 where modifiers == [.command]:  // Cmd+C — copy selection to pasteboard
+            copySelectionToPasteboard()
+            return nil
+        case 9 where modifiers == [.command]:  // Cmd+V — paste files here
+            pasteFromPasteboard()
+            return nil
         case 3 where modifiers == [.command]:  // Cmd+F — filter
             showsFilter = true
             filterFieldFocused = true
@@ -480,6 +486,29 @@ struct BrowserPane: View {
             pendingSelectFirstItem = true
         }
         open(file)
+    }
+
+    /// Cmd+C — write the selected files' URLs to the pasteboard (Finder-compatible).
+    private func copySelectionToPasteboard() {
+        let urls = flatRows.map(\.file).filter { selection.contains($0.id) }.map(\.url)
+        guard !urls.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.writeObjects(urls as [NSURL])
+        store.statusMessage = "Copied \(urls.count) item\(urls.count == 1 ? "" : "s")"
+    }
+
+    /// Cmd+V — copy files from the pasteboard into the current folder (works
+    /// with files copied in Finder too). Skips files already here.
+    private func pasteFromPasteboard() {
+        guard let urls = NSPasteboard.general.readObjects(forClasses: [NSURL.self]) as? [URL], !urls.isEmpty else {
+            return
+        }
+        onFocus()
+        let dest = currentURL.standardizedFileURL
+        for url in urls where url.deletingLastPathComponent().standardizedFileURL != dest {
+            store.copy(url, toDirectory: currentURL)
+        }
+        scheduleReload()
     }
 
     private func trashSelection() {

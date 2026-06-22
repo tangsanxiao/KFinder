@@ -67,6 +67,24 @@ private func makeDir(_ url: URL) throws {
 }
 
 @MainActor
+@Test func copyToDirectoryDeduplicatesNames() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("note.txt")
+    try writeFile(source, "v1")
+    let dest = root.appendingPathComponent("dest", isDirectory: true)
+    try makeDir(dest)
+    try writeFile(dest.appendingPathComponent("note.txt"), "existing")
+
+    store.copy(source, toDirectory: dest)
+
+    // Both the existing file and a de-duplicated copy are present.
+    #expect(FileManager.default.fileExists(atPath: dest.appendingPathComponent("note.txt").path))
+    #expect(FileManager.default.fileExists(atPath: dest.appendingPathComponent("note 2.txt").path))
+}
+
+@MainActor
 @Test func consolidateSkillMovesToLibraryAndSymlinksLocations() throws {
     let (store, root) = try makeFixture()
     defer { try? FileManager.default.removeItem(at: root) }

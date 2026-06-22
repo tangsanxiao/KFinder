@@ -578,6 +578,18 @@ final class WorkspaceStore: ObservableObject {
         }
     }
 
+    func copy(_ sourceURL: URL, toDirectory destinationURL: URL) {
+        do {
+            let target = uniqueDestinationURL(for: sourceURL, in: destinationURL)
+            try FileManager.default.copyItem(at: sourceURL, to: target)
+            fileOperationRevision += 1
+            statusMessage = "Copied \(sourceURL.lastPathComponent)"
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Copy failed"
+        }
+    }
+
     func move(_ sourceURL: URL, to destination: PaneDestination) {
         move(sourceURL, toDirectory: destination.url, destinationName: destination.name)
     }
