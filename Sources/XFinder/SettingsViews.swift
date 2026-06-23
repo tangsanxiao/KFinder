@@ -27,6 +27,8 @@ struct SettingsView: View {
                     Divider()
                     skillsSection
                     Divider()
+                    summaryLLMSection
+                    Divider()
                     claudeSection
                     Divider()
                     debugSection
@@ -78,6 +80,64 @@ struct SettingsView: View {
 
     private var skillLibraryBinding: Binding<String> {
         Binding(get: { store.settings.skillLibraryPath }, set: { store.settings.skillLibraryPath = $0 })
+    }
+
+    private var summaryLLMSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.loc("会话总结 LLM", "Session summary LLM"))
+                .font(.system(size: 13, weight: .semibold))
+            Toggle(isOn: llmEnabledBinding) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.loc("启用第三方 LLM 总结", "Enable third-party LLM summaries"))
+                    Text(
+                        store.loc(
+                            "在会话中心用你自己的 OpenAI 兼容接口总结会话。默认关闭。",
+                            "Summarize sessions in Session Center via your own OpenAI-compatible endpoint. Off by default."
+                        )
+                    )
+                    .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if store.settings.summaryLLM.enabled {
+                Divider()
+                labeledField(
+                    store.loc("接口地址 (Base URL)", "Base URL"), text: llmBaseURLBinding,
+                    placeholder: "https://api.openai.com/v1")
+                labeledField(store.loc("模型", "Model"), text: llmModelBinding, placeholder: "gpt-4o-mini")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("API Key").font(.system(size: 12, weight: .medium))
+                    SecureField(store.loc("你的 API Key", "Your API key"), text: llmKeyBinding)
+                        .textFieldStyle(.roundedBorder)
+                }
+                Text(
+                    store.loc(
+                        "API Key 仅保存在本机的应用设置中,不会上传到除你配置的接口之外的任何地方。",
+                        "Your API key is stored locally in the app's settings and sent only to the endpoint you configure."
+                    )
+                )
+                .font(.caption).foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func labeledField(_ label: String, text: Binding<String>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 12, weight: .medium))
+            TextField(placeholder, text: text).textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private var llmEnabledBinding: Binding<Bool> {
+        Binding(get: { store.settings.summaryLLM.enabled }, set: { store.settings.summaryLLM.enabled = $0 })
+    }
+    private var llmBaseURLBinding: Binding<String> {
+        Binding(get: { store.settings.summaryLLM.baseURL }, set: { store.settings.summaryLLM.baseURL = $0 })
+    }
+    private var llmModelBinding: Binding<String> {
+        Binding(get: { store.settings.summaryLLM.model }, set: { store.settings.summaryLLM.model = $0 })
+    }
+    private var llmKeyBinding: Binding<String> {
+        Binding(get: { store.settings.summaryLLM.apiKey }, set: { store.settings.summaryLLM.apiKey = $0 })
     }
 
     private var claudeSection: some View {

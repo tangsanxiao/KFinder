@@ -23,9 +23,12 @@ struct ContentView: View {
                 Divider()
             }
 
-            if store.showsSkillHub {
+            switch store.activePanel {
+            case .skills:
                 SkillHubView(isSidebarVisible: isSidebarVisible)
-            } else {
+            case .sessions:
+                SessionCenterView(isSidebarVisible: isSidebarVisible)
+            case .files:
                 WorkspaceDetailView(
                     focusedDirectoryID: focusedDirectoryID,
                     paneViewModes: $paneViewModes,

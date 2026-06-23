@@ -15,7 +15,10 @@ struct SidebarView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    skillHubEntry
+                    VStack(spacing: 2) {
+                        skillHubEntry
+                        sessionCenterEntry
+                    }
                     workspaceSection
                     starsSection
                     bookmarksSection
@@ -81,7 +84,26 @@ struct SidebarView: View {
             Rectangle().fill(store.showsSkillHub ? Color.accentColor.opacity(0.18) : Color.clear)
         )
         .contentShape(Rectangle())
-        .onTapGesture { store.showsSkillHub = true }
+        .onTapGesture { store.activePanel = .skills }
+    }
+
+    /// Entry into the cross-agent Session Center.
+    private var sessionCenterEntry: some View {
+        let active = store.activePanel == .sessions
+        return HStack(spacing: 8) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 12))
+                .frame(width: 16)
+                .foregroundStyle(active ? .blue : .secondary)
+            Text(store.loc("会话中心", "Session Center"))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 30)
+        .background(Rectangle().fill(active ? Color.accentColor.opacity(0.18) : Color.clear))
+        .contentShape(Rectangle())
+        .onTapGesture { store.activePanel = .sessions }
     }
 
     private var workspaceSection: some View {
@@ -107,7 +129,7 @@ struct SidebarView: View {
                 WorkspaceSidebarRow(
                     workspace: workspace,
                     // No workspace looks selected while the Skill Center is open.
-                    isSelected: !store.showsSkillHub && workspace.id == store.selectedWorkspaceID,
+                    isSelected: store.activePanel == .files && workspace.id == store.selectedWorkspaceID,
                     select: {
                         store.showsSkillHub = false
                         store.selectedWorkspaceID = workspace.id

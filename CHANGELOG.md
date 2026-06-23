@@ -4,7 +4,11 @@ All notable changes to XFinder are recorded here. Newest first.
 
 ## [Unreleased]
 
+## [0.2.0] — Skill Center, Session Center & agent-aware file management
+
 ### Added
+- Session Center (sidebar entry): a unified, read-only catalog of chat sessions across code agents (Claude `~/.claude/projects`, Codex `~/.codex/sessions`), grouped by project folder. Filter by agent, search by title/project, see each session's date and an approximate token count (plus a total). Click one to read the full transcript and get a summary: an instant deterministic recap, or — when enabled in Settings — a real summary from your own third-party LLM. Injected preambles (AGENTS.md, attachment lists, system reminders) are stripped so titles and transcripts start at the real first prompt — fixing meaningless Codex titles and the leading AGENTS.md block.
+- Configurable summary LLM (Settings ▸ Session summary LLM, off by default): any OpenAI-compatible endpoint (base URL + model + API key). The key is stored locally and only sent to the endpoint you configure.
 - Skill Center filters & layout: filter the catalog by management state (Consolidated / Not consolidated) and by agent (chips derived from what's actually installed). Claude Code and Claude CLI share one "Claude" agent (same `~/.claude/skills`); Claude Desktop's ephemeral per-session plugin caches are intentionally not shown. The catalog is a two-column card grid; the detail header also shows install count, last-updated date, and on-disk size.
 - Copy/paste files in a pane with Cmd+C / Cmd+V (pasteboard-based, interoperates with Finder); paste copies into the focused pane's folder and skips files already there.
 - Skill Hub (sidebar entry): a unified catalog of Agent Skills (`<name>/SKILL.md`) scanned across installed AI clients (Claude Code, Trae CN incl. read-only built-ins). Each row shows which agents a skill is active in and flags content drift between copies. The detail panel shows purpose, version, license, and every installation (with reveal / edit).

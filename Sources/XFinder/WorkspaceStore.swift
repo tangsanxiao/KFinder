@@ -32,7 +32,16 @@ final class WorkspaceStore: ObservableObject {
     @Published var isSettingsPresented = false
     /// When true, the detail area shows the Skill Hub instead of the file
     /// panes. Not persisted.
-    @Published var showsSkillHub = false
+    /// Which top-level panel the content area shows.
+    @Published var activePanel: ActivePanel = .files
+
+    enum ActivePanel { case files, skills, sessions }
+
+    /// Back-compat shim: the sidebar/Skill Center still read/write this.
+    var showsSkillHub: Bool {
+        get { activePanel == .skills }
+        set { activePanel = newValue ? .skills : .files }
+    }
     /// Files currently being dragged inside the app — the whole selection, so a
     /// multi-file drag moves every file (SwiftUI `.onDrag` only carries one
     /// provider). Set at drag start, consumed and cleared on drop.

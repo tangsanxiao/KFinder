@@ -95,6 +95,14 @@
   **要求**：这类操作必须遍历 `actionTargets(for:)` 返回的全部目标，不能只对被右键的那一行 `row.file` 生效。新增的行级批量操作走 `trashTargets`/`copyTargets`/`moveTargets` 这类统一入口。
   **原因**：曾导致选中多个文件却只删/只移了一个，其余静默不动。
 
+## 跨 agent 中心(Skill / Session)
+
+- **要求**:扫描各 agent 目录的能力(Skill Center、Session Center)默认**只读**;解析按 agent 写独立适配器,且解析逻辑(frontmatter / JSONL 行 → 消息、token 估算)抽成纯函数放 `*Models`/`*Parsing` 并配单测,文件 IO 放 `*Scanner`。
+- **要求**:列表扫描必须**廉价**——会话文件可能很大(单机 ~400MB),列表只 stat + 头部读(`FileHandle.read(upToCount:)`),完整解析(transcript)在选中时惰性做;token 是估算(≈,字符/4 或字节/4),UI 要标注"≈"。
+- **要求**:`FileManager.DirectoryEnumerator` 的迭代在 async 上下文不可用,递归收集文件要放在**同步**辅助函数里再被 async 调用。
+- **情况**:第三方 LLM(会话总结)需要用户自填 API key。
+  **要求**:默认关闭;key 存本机设置、只发往用户配置的 endpoint;请求构造(`makeRequest`)和响应解析(`parseContent`)写成纯函数配单测,网络调用单独一层。**绝不**把 key 发往其它地方或记日志。
+
 ## 通用
 
 - **要求**：用户可感知的操作结果一律走 `store.statusMessage` / `store.lastError`，不要 print 或静默吞掉。这两个属性的 didSet 会自动进入 app 内的 Activity & Errors 面板，是排错的唯一线索来源。

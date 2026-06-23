@@ -90,6 +90,24 @@ struct AppSettings: Codable, Equatable {
     /// Canonical skill library directory; empty = default `~/Skills`. Skills
     /// consolidated here are symlinked into each agent (one source of truth).
     var skillLibraryPath = ""
+    /// Third-party LLM (OpenAI-compatible) for Session Center summaries.
+    var summaryLLM = SummaryLLMConfig()
+}
+
+/// User-configured OpenAI-compatible LLM for summarizing sessions. Off by
+/// default; the key is the user's own, stored locally in the app's settings.
+struct SummaryLLMConfig: Codable, Equatable {
+    var enabled = false
+    /// API base, e.g. https://api.openai.com/v1 (no trailing /chat/completions).
+    var baseURL = "https://api.openai.com/v1"
+    var model = "gpt-4o-mini"
+    var apiKey = ""
+
+    var isUsable: Bool {
+        enabled && !apiKey.trimmingCharacters(in: .whitespaces).isEmpty
+            && !baseURL.trimmingCharacters(in: .whitespaces).isEmpty
+            && !model.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 }
 
 /// Coarse, rule-based file classification (no LLM) for the pane's category
