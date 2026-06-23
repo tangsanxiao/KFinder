@@ -4,7 +4,7 @@ All notable changes to XFinder are recorded here. Newest first.
 
 ## [Unreleased]
 
-## [0.2.0] — Skill Center, Session Center & agent-aware file management
+## [0.3.0] — Skill Center, Session Center & agent-aware file management
 
 ### Added
 - Session Center (sidebar entry): a unified, read-only catalog of chat sessions across code agents (Claude `~/.claude/projects`, Codex `~/.codex/sessions`), grouped by project folder. Filter by agent, search by title/project, see each session's date and an approximate token count (plus a total). Click one to read the full transcript and get a summary: an instant deterministic recap, or — when enabled in Settings — a real summary from your own third-party LLM. Injected preambles (AGENTS.md, attachment lists, system reminders) are stripped so titles and transcripts start at the real first prompt — fixing meaningless Codex titles and the leading AGENTS.md block.
