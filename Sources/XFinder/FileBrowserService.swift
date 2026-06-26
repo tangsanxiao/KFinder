@@ -33,9 +33,17 @@ enum FileBrowserService {
     /// folders never block the main thread. Views must use this one; the sync
     /// version exists for tests and non-UI callers.
     static func contents(of url: URL, includingHidden: Bool = false) async throws -> [BrowserFileItem] {
-        try await Task.detached(priority: .userInitiated) {
-            try contents(of: url, includingHidden: includingHidden)
-        }.value
+        let task = Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            let items = try contents(of: url, includingHidden: includingHidden)
+            try Task.checkCancellation()
+            return items
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     static func contents(of url: URL, includingHidden: Bool = false) throws -> [BrowserFileItem] {

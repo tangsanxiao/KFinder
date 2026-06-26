@@ -39,6 +39,10 @@
 
 ## UI 约定
 
+- **情况**：任何改动可能影响启动速度、目录加载、文件列表渲染、Agent/Session 扫描、文件监听、主线程工作量或内存占用。
+  **要求**：默认性能优先；改动前必须明确说明性能影响面（是否新增扫描/轮询/递归/主线程 IO/大数组重建/频繁状态发布），并优先采用懒加载、缓存、debounce、后台执行、取消传播和有界数据处理。高风险改动要补测试或采样/计时证据，汇报时说明验证方式。
+  **原因**：XFinder 的核心体验依赖本地大目录和多 agent 产物的快速浏览；未评估的刷新、扫描或 SwiftUI diff 很容易造成 CPU 飙高、卡顿或后台任务堆积。
+
 - **情况**：视图代码（`@MainActor`）里直接同步调用 `FileBrowserService.contents` / `FileManager` 读目录。
   **要求**：视图里的目录读取一律走 `FileBrowserService.contents` 的 **async 重载**（内部 `Task.detached` 下沉到后台线程）；并发 reload 用 generation 计数丢弃过期结果，防止慢目录覆盖新结果。
   **原因**：同步 IO 跑在主线程，遇到大目录（node_modules、大 Downloads）整个 UI 卡死，与"高性能"目标直接冲突。
@@ -70,6 +74,10 @@
 - **情况**：列表斑马纹曾经钉在视口上，滚动时与行错位。
   **要求**：交替底色必须画在每一行内（随内容滚动），空白区用受视口高度限制的 `ListStripeFiller` 填充；行高/选中块/斑马纹统一读 `FileRowMetrics`，不要写死。
   **原因**：钉视口的背景层不随 `ScrollView` 滚动，必然错位；分散的魔法数字会让几处对不齐。
+
+- **情况**：文件列表在展开大量目录或当前目录有频繁文件事件时 CPU 飙高。
+  **要求**：可见行 flatten 逻辑必须放在 `PaneVisibleRowLogic` 这类纯逻辑里，行 id/序号在模型创建时固定；`ForEach` 直接遍历行模型，不要在 `body` 里 `Array(rows.enumerated())`；FSEvents / 文件操作触发的 reload 必须 debounce 合并。
+  **原因**：SwiftUI 布局会频繁读取 `body`，在里面递归排序、复制行模型或为每个文件事件开 reload 任务，会把主线程耗在 `LazyVStack/ForEach` diff 和布局上。
 
 - **要求**：文件/文件夹图标用 `NSWorkspace.shared.icon(forFile:)`（真实系统图标），不要用 SF Symbol 近似；选中时图标不变色（只有文字和展开箭头变白）。
 

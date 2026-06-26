@@ -44,6 +44,7 @@ struct BrowserPane: View {
     @State private var showsGoToPath = false
     @State private var goToPathText = ""
     @State private var keyMonitor: Any?
+    @State private var scheduledReloadTask: Task<Void, Never>?
     @State private var gitSnapshot: GitDirectorySnapshot?
     @State private var showsProjectCard = false
     @State private var showsAnalysis = false
@@ -71,6 +72,7 @@ struct BrowserPane: View {
 
     init(
         root: DirectoryItem,
+        initialURL: URL? = nil,
         isFocused: Bool,
         viewMode: BrowserViewMode,
         onViewModeChange: @escaping (BrowserViewMode) -> Void,
@@ -81,7 +83,7 @@ struct BrowserPane: View {
         self.viewMode = viewMode
         self.onViewModeChange = onViewModeChange
         self.onFocus = onFocus
-        _currentURL = State(initialValue: URL(fileURLWithPath: root.path))
+        _currentURL = State(initialValue: initialURL ?? URL(fileURLWithPath: root.path))
     }
 
     var body: some View {
@@ -128,12 +130,6 @@ struct BrowserPane: View {
             dropOnPaneBackground(providers)
         }
         .onAppear {
-            // Switching workspaces destroys and recreates panes, resetting
-            // @State to the root path. Restore the last location this pane was
-            // viewing (kept live in the store) so navigation survives the switch.
-            if let saved = store.paneLocation(for: root.id), saved != currentURL {
-                currentURL = saved
-            }
             // Keyboard navigation: a local monitor per pane; only the focused
             // pane consumes events, all others pass them through.
             keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -143,6 +139,8 @@ struct BrowserPane: View {
         .onDisappear {
             if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
             keyMonitor = nil
+            scheduledReloadTask?.cancel()
+            scheduledReloadTask = nil
         }
         .sheet(isPresented: $showsGoToPath) {
             goToPathSheet
@@ -197,8 +195,20 @@ struct BrowserPane: View {
             await reload()
             // Auto-refresh when the directory (or an expanded subfolder) changes
             // on disk — files added/removed/renamed or their contents edited.
+            var pendingWatcherReload: Task<Void, Never>?
+            defer { pendingWatcherReload?.cancel() }
             for await _ in DirectoryWatcher.changes(of: currentURL) {
-                await reloadPreservingExpansion()
+                pendingWatcherReload?.cancel()
+                let watchedURL = currentURL
+                let watchedHiddenMode = showsHiddenItems
+                pendingWatcherReload = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(650))
+                    guard !Task.isCancelled,
+                        currentURL == watchedURL,
+                        showsHiddenItems == watchedHiddenMode
+                    else { return }
+                    await reloadPreservingExpansion()
+                }
             }
         }
         .onChange(of: store.fileOperationRevision) { _ in
@@ -299,7 +309,7 @@ struct BrowserPane: View {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                        ForEach(rows) { row in
                             FileRow(
                                 file: row.file,
                                 depth: row.depth,
@@ -308,7 +318,7 @@ struct BrowserPane: View {
                                 isExpanded: expandedFolders.contains(row.file.id),
                                 isSelected: selection.contains(row.file.id),
                                 isActivePane: isFocused,
-                                isAlternate: !index.isMultiple(of: 2),
+                                isAlternate: !row.ordinal.isMultiple(of: 2),
                                 canBrowseInline: canBrowseInline(row.file),
                                 isRenaming: renamingFileID == row.file.id,
                                 columnWidths: widths,
@@ -1406,7 +1416,15 @@ struct BrowserPane: View {
     /// Sync-context entry point for the async reloads (button actions, change
     /// handlers). Fire-and-forget; staleness is handled by `loadGeneration`.
     private func scheduleReload(selecting targetURL: URL? = nil) {
-        Task { await reloadPreservingExpansion(selecting: targetURL) }
+        scheduledReloadTask?.cancel()
+        scheduledReloadTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            await reloadPreservingExpansion(selecting: targetURL)
+            if !Task.isCancelled {
+                scheduledReloadTask = nil
+            }
+        }
     }
 
     private func reload() async {
@@ -1491,19 +1509,14 @@ struct BrowserPane: View {
         }
     }
 
-    private var flatRows: [FileTreeRow] {
-        flatten(sortedItems, depth: 0)
-    }
-
-    private func flatten(_ source: [BrowserFileItem], depth: Int) -> [FileTreeRow] {
-        source.flatMap { file -> [FileTreeRow] in
-            var rows = [FileTreeRow(file: file, depth: depth)]
-            if canBrowseInline(file), expandedFolders.contains(file.id), let children = expandedContents[file.id] {
-                rows.append(
-                    contentsOf: flatten(sorted(visible(children)), depth: depth + 1))
-            }
-            return rows
-        }
+    private var flatRows: [PaneVisibleRow] {
+        PaneVisibleRowLogic.flatten(
+            sortedItems,
+            expandedFolderIDs: expandedFolders,
+            expandedContents: expandedContents,
+            canBrowseInline: canBrowseInline,
+            sortAndFilterChildren: { sorted(visible($0)) }
+        )
     }
 
     // Sort lives in the store (keyed by pane id) so it survives workspace
@@ -1969,13 +1982,6 @@ private struct PathCrumb: Hashable {
     let url: URL
     let title: String
     let isRoot: Bool
-}
-
-private struct FileTreeRow: Identifiable {
-    let file: BrowserFileItem
-    let depth: Int
-
-    var id: String { "\(file.id)-\(depth)" }
 }
 
 private struct SortHeaderButton: View {

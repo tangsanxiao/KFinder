@@ -19,6 +19,7 @@ Key user-visible changes to XFinder. Newest first.
 ### Fixed
 - Cmd+A selects visible files in the focused pane.
 - Compression failures now report clearer diagnostics and avoid leaving the UI waiting on a lost zip process.
+- Reduced file-pane CPU spikes during large expanded lists and bursty filesystem changes.
 
 ## [0.3.0] — Agent-Aware File Management
 

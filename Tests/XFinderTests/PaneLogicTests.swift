@@ -70,3 +70,32 @@ private func makeItems(_ names: [String], in root: URL) throws -> [BrowserFileIt
     #expect(PaneFilterLogic.filter(items, query: " txt ").map(\.name) == ["Alpha.txt", "Gamma.txt"])
     #expect(PaneFilterLogic.filter(items, query: "zzz").isEmpty)
 }
+
+@Test func visibleRowsFlattenExpandedFoldersWithStableIDsAndOrdinals() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderRows-\(UUID().uuidString)", isDirectory: true)
+    let folder = root.appendingPathComponent("Folder", isDirectory: true)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    try "root".write(to: root.appendingPathComponent("Root.txt"), atomically: true, encoding: .utf8)
+    try "child".write(to: folder.appendingPathComponent("Child.txt"), atomically: true, encoding: .utf8)
+
+    let rootItems = try FileBrowserService.contents(of: root)
+    let folderItem = try #require(rootItems.first { $0.name == "Folder" })
+    let childItems = try FileBrowserService.contents(of: folder)
+
+    let rows = PaneVisibleRowLogic.flatten(
+        rootItems,
+        expandedFolderIDs: [folderItem.id],
+        expandedContents: [folderItem.id: childItems],
+        canBrowseInline: { $0.canBrowseInline },
+        sortAndFilterChildren: { $0 }
+    )
+
+    #expect(rows.map(\.file.name) == ["Folder", "Child.txt", "Root.txt"])
+    #expect(rows.map(\.depth) == [0, 1, 0])
+    #expect(rows.map(\.ordinal) == [0, 1, 2])
+    #expect(rows[0].id == "\(folderItem.id)-0")
+    #expect(rows[1].id == "\(childItems[0].id)-1")
+}

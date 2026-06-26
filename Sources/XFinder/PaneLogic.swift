@@ -38,3 +38,72 @@ enum PaneFilterLogic {
         return items.filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
     }
 }
+
+struct PaneVisibleRow: Identifiable, Equatable {
+    let file: BrowserFileItem
+    let depth: Int
+    let ordinal: Int
+    let id: String
+
+    init(file: BrowserFileItem, depth: Int, ordinal: Int) {
+        self.file = file
+        self.depth = depth
+        self.ordinal = ordinal
+        id = "\(file.id)-\(depth)"
+    }
+}
+
+enum PaneVisibleRowLogic {
+    static func flatten(
+        _ items: [BrowserFileItem],
+        expandedFolderIDs: Set<String>,
+        expandedContents: [String: [BrowserFileItem]],
+        canBrowseInline: (BrowserFileItem) -> Bool,
+        sortAndFilterChildren: ([BrowserFileItem]) -> [BrowserFileItem]
+    ) -> [PaneVisibleRow] {
+        var rows: [PaneVisibleRow] = []
+        rows.reserveCapacity(items.count + expandedContents.values.reduce(0) { $0 + $1.count })
+        var ordinal = 0
+        appendRows(
+            items,
+            depth: 0,
+            ordinal: &ordinal,
+            expandedFolderIDs: expandedFolderIDs,
+            expandedContents: expandedContents,
+            canBrowseInline: canBrowseInline,
+            sortAndFilterChildren: sortAndFilterChildren,
+            into: &rows
+        )
+        return rows
+    }
+
+    private static func appendRows(
+        _ items: [BrowserFileItem],
+        depth: Int,
+        ordinal: inout Int,
+        expandedFolderIDs: Set<String>,
+        expandedContents: [String: [BrowserFileItem]],
+        canBrowseInline: (BrowserFileItem) -> Bool,
+        sortAndFilterChildren: ([BrowserFileItem]) -> [BrowserFileItem],
+        into rows: inout [PaneVisibleRow]
+    ) {
+        for file in items {
+            rows.append(PaneVisibleRow(file: file, depth: depth, ordinal: ordinal))
+            ordinal += 1
+            guard canBrowseInline(file),
+                expandedFolderIDs.contains(file.id),
+                let children = expandedContents[file.id]
+            else { continue }
+            appendRows(
+                sortAndFilterChildren(children),
+                depth: depth + 1,
+                ordinal: &ordinal,
+                expandedFolderIDs: expandedFolderIDs,
+                expandedContents: expandedContents,
+                canBrowseInline: canBrowseInline,
+                sortAndFilterChildren: sortAndFilterChildren,
+                into: &rows
+            )
+        }
+    }
+}

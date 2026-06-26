@@ -276,6 +276,7 @@ private struct MultiPaneBrowserView: View {
     private func paneView(for item: DirectoryItem) -> some View {
         BrowserPane(
             root: item,
+            initialURL: store.paneLocation(for: item.id),
             isFocused: focusedDirectoryID == item.id,
             viewMode: paneViewModes[item.id, default: .list],
             onViewModeChange: { paneViewModes[item.id] = $0 },
