@@ -85,6 +85,29 @@ private func makeDir(_ url: URL) throws {
 }
 
 @MainActor
+@Test func copyUndoRedoRemovesAndRestoresCopiedFile() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("note.txt")
+    try writeFile(source, "v1")
+    let dest = root.appendingPathComponent("dest", isDirectory: true)
+    try makeDir(dest)
+
+    store.copy(source, toDirectory: dest)
+    let copied = dest.appendingPathComponent("note.txt")
+    #expect(FileManager.default.fileExists(atPath: copied.path))
+    #expect(store.canUndoFileOperation)
+
+    store.undoLastFileOperation()
+    #expect(!FileManager.default.fileExists(atPath: copied.path))
+    #expect(store.canRedoFileOperation)
+
+    store.redoLastFileOperation()
+    #expect(FileManager.default.fileExists(atPath: copied.path))
+}
+
+@MainActor
 @Test func consolidateSkillMovesToLibraryAndSymlinksLocations() throws {
     let (store, root) = try makeFixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -150,6 +173,29 @@ private func makeDir(_ url: URL) throws {
 }
 
 @MainActor
+@Test func moveUndoRedoMovesFileBackAndForward() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let source = root.appendingPathComponent("a.txt")
+    try writeFile(source)
+    let dest = root.appendingPathComponent("dest", isDirectory: true)
+    try makeDir(dest)
+
+    store.move(source, toDirectory: dest)
+    let moved = dest.appendingPathComponent("a.txt")
+    #expect(FileManager.default.fileExists(atPath: moved.path))
+
+    store.undoLastFileOperation()
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    #expect(!FileManager.default.fileExists(atPath: moved.path))
+
+    store.redoLastFileOperation()
+    #expect(!FileManager.default.fileExists(atPath: source.path))
+    #expect(FileManager.default.fileExists(atPath: moved.path))
+}
+
+@MainActor
 @Test func moveIntoSameFolderIsANoOp() throws {
     let (store, root) = try makeFixture()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -192,6 +238,43 @@ private func makeDir(_ url: URL) throws {
 
     #expect(!FileManager.default.fileExists(atPath: a.path))
     #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("renamed.txt").path))
+}
+
+@MainActor
+@Test func renameUndoRedoRestoresNames() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let original = root.appendingPathComponent("a.txt")
+    let renamed = root.appendingPathComponent("renamed.txt")
+    try writeFile(original)
+
+    store.renameFile(original, to: "renamed.txt")
+    #expect(FileManager.default.fileExists(atPath: renamed.path))
+
+    store.undoLastFileOperation()
+    #expect(FileManager.default.fileExists(atPath: original.path))
+    #expect(!FileManager.default.fileExists(atPath: renamed.path))
+
+    store.redoLastFileOperation()
+    #expect(!FileManager.default.fileExists(atPath: original.path))
+    #expect(FileManager.default.fileExists(atPath: renamed.path))
+}
+
+@MainActor
+@Test func duplicateCreatesCopyAndCanUndo() throws {
+    let (store, root) = try makeFixture()
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let original = root.appendingPathComponent("a.txt")
+    try writeFile(original, "body")
+
+    let duplicate = try #require(store.duplicate(original))
+    #expect(duplicate.lastPathComponent == "a copy.txt")
+    #expect(FileManager.default.fileExists(atPath: duplicate.path))
+
+    store.undoLastFileOperation()
+    #expect(!FileManager.default.fileExists(atPath: duplicate.path))
 }
 
 @MainActor

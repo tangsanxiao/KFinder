@@ -51,6 +51,13 @@ struct PaneDestination: Identifiable, Hashable {
     let url: URL
 }
 
+struct FileTask: Identifiable, Equatable {
+    let id: UUID
+    var title: String
+    var detail: String
+    var isCancellable: Bool
+}
+
 struct SystemBookmark: Identifiable, Hashable {
     let id: String
     let title: String

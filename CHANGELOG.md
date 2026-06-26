@@ -4,6 +4,17 @@ All notable changes to XFinder are recorded here. Newest first.
 
 ## [Unreleased]
 
+### Added
+- Finder-style P0 basics: Space opens system Quick Look for the current selection, Cmd+I opens a Get Info sheet, and a File Actions menu exposes Open, Quick Look, Get Info, Search Folder, Rename, Duplicate, Compress, Reveal in Finder, and Move to Trash.
+- Recursive folder search from the focused pane (Cmd+Option+F), with hidden-file behavior matching the pane's hidden-mode toggle and click-to-reveal results.
+- Undo/redo for common file operations: copy, move, rename, duplicate, create folder, create Markdown, and move to Trash. Compression can be undone by removing the created archive.
+- A cancellable file-task overlay for long compression jobs.
+- Duplicate file support, using Finder-style `copy` / `copy 2` naming.
+
+### Fixed
+- Cmd+A now selects visible items in the focused pane.
+- Compression failures now check target writability before launching `zip`, keep the running `zip` process alive, and include stderr / clearer diagnostics instead of only reporting an exit code.
+
 ## [0.3.0] — Skill Center, Session Center & agent-aware file management
 
 ### Added

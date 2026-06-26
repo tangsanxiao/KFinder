@@ -93,6 +93,9 @@ struct FileRow: View {
     let reveal: () -> Void
     let trash: () -> Void
     let compress: () -> Void
+    let duplicate: () -> Void
+    let getInfo: () -> Void
+    let quickLook: () -> Void
     let claudeEnabled: Bool
     let askClaude: () -> Void
     let copyTo: (PaneDestination) -> Void
@@ -178,8 +181,11 @@ struct FileRow: View {
         }
         .contextMenu {
             Button(canBrowseInline ? "Enter Folder" : "Open") { open() }
+            Button("Quick Look") { quickLook() }
+            Button("Get Info") { getInfo() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
+            Button("Duplicate") { duplicate() }
             Button("Compress") { compress() }
             if claudeEnabled {
                 Button("Ask Claude About Selection") { askClaude() }
@@ -279,6 +285,9 @@ struct IconFileCell: View {
     let cancelRename: () -> Void
     let open: () -> Void
     let trash: () -> Void
+    let duplicate: () -> Void
+    let getInfo: () -> Void
+    let quickLook: () -> Void
     let canBrowseInline: Bool
     let onBeginDrag: () -> Void
     let dropInto: ([NSItemProvider]) -> Bool
@@ -324,6 +333,9 @@ struct IconFileCell: View {
         }
         .contextMenu {
             Button("Open") { open() }
+            Button("Quick Look") { quickLook() }
+            Button("Get Info") { getInfo() }
+            Button("Duplicate") { duplicate() }
             Button("Move to Trash", role: .destructive) { trash() }
         }
     }
@@ -392,6 +404,9 @@ struct ColumnFileRow: View {
     let copy: () -> Void
     let reveal: () -> Void
     let trash: () -> Void
+    let duplicate: () -> Void
+    let getInfo: () -> Void
+    let quickLook: () -> Void
     let copyTo: (PaneDestination) -> Void
     let moveTo: (PaneDestination) -> Void
     let onBeginDrag: () -> Void
@@ -445,8 +460,11 @@ struct ColumnFileRow: View {
         }
         .contextMenu {
             Button(canBrowseInline ? "Enter Folder" : "Open") { open() }
+            Button("Quick Look") { quickLook() }
+            Button("Get Info") { getInfo() }
             Button("Reveal in Finder") { reveal() }
             Button("Copy Path") { copy() }
+            Button("Duplicate") { duplicate() }
             Button("Move to Trash", role: .destructive) { trash() }
 
             if !destinations.isEmpty {

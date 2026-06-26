@@ -11,6 +11,21 @@ struct AppEvent: Identifiable, Equatable {
     let message: String
 }
 
+private enum FileHistoryOperation {
+    case remove(URL)
+    case move(from: URL, to: URL)
+    case copy(from: URL, to: URL)
+    case trash(URL)
+    case createDirectory(URL)
+    case createEmptyFile(URL)
+}
+
+private struct FileHistoryEntry {
+    let title: String
+    let undo: FileHistoryOperation
+    let redo: FileHistoryOperation?
+}
+
 @MainActor
 final class WorkspaceStore: ObservableObject {
     @Published var workspaces: [Workspace] = []
@@ -24,6 +39,9 @@ final class WorkspaceStore: ObservableObject {
     }
     /// Newest first, capped — the trace panel's data source.
     @Published private(set) var events: [AppEvent] = []
+    @Published private(set) var fileTasks: [FileTask] = []
+    @Published private(set) var canUndoFileOperation = false
+    @Published private(set) var canRedoFileOperation = false
     @Published var fileOperationRevision = 0
     @Published private var paneLocations: [UUID: String] = [:]
     @Published private var paneSortOrders: [UUID: PaneSortOrder] = [:]
@@ -70,6 +88,9 @@ final class WorkspaceStore: ObservableObject {
     private let paneSortOrdersURL: URL
     private let settingsURL: URL
     private let finderController = FinderController()
+    private var runningCompressionProcesses: [UUID: Process] = [:]
+    private var undoStack: [FileHistoryEntry] = []
+    private var redoStack: [FileHistoryEntry] = []
 
     /// - Parameter supportDirectory: base directory for persistence. Defaults to
     ///   the real Application Support location; tests pass a temp directory to
@@ -579,6 +600,11 @@ final class WorkspaceStore: ObservableObject {
         do {
             let target = uniqueDestinationURL(for: sourceURL, in: destination.url)
             try FileManager.default.copyItem(at: sourceURL, to: target)
+            registerHistory(
+                title: "Copy \(sourceURL.lastPathComponent)",
+                undo: .remove(target),
+                redo: .copy(from: sourceURL, to: target)
+            )
             fileOperationRevision += 1
             statusMessage = "Copied \(sourceURL.lastPathComponent) to \(destination.name)"
         } catch {
@@ -591,6 +617,11 @@ final class WorkspaceStore: ObservableObject {
         do {
             let target = uniqueDestinationURL(for: sourceURL, in: destinationURL)
             try FileManager.default.copyItem(at: sourceURL, to: target)
+            registerHistory(
+                title: "Copy \(sourceURL.lastPathComponent)",
+                undo: .remove(target),
+                redo: .copy(from: sourceURL, to: target)
+            )
             fileOperationRevision += 1
             statusMessage = "Copied \(sourceURL.lastPathComponent)"
         } catch {
@@ -611,6 +642,11 @@ final class WorkspaceStore: ObservableObject {
             }
             let target = uniqueDestinationURL(for: sourceURL, in: destinationURL)
             try FileManager.default.moveItem(at: sourceURL, to: target)
+            registerHistory(
+                title: "Move \(sourceURL.lastPathComponent)",
+                undo: .move(from: target, to: sourceURL),
+                redo: .move(from: sourceURL, to: target)
+            )
             fileOperationRevision += 1
             statusMessage = "Moved \(sourceURL.lastPathComponent) to \(destinationName ?? destinationURL.path)"
         } catch {
@@ -631,6 +667,11 @@ final class WorkspaceStore: ObservableObject {
                 return
             }
             try FileManager.default.moveItem(at: sourceURL, to: target)
+            registerHistory(
+                title: "Rename \(sourceURL.lastPathComponent)",
+                undo: .move(from: target, to: sourceURL),
+                redo: .move(from: sourceURL, to: target)
+            )
             fileOperationRevision += 1
             statusMessage = "Renamed \(sourceURL.lastPathComponent) to \(trimmedName)"
         } catch {
@@ -644,6 +685,11 @@ final class WorkspaceStore: ObservableObject {
         let target = uniqueDestinationURL(for: directory.appendingPathComponent(name), in: directory)
         do {
             try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+            registerHistory(
+                title: "Create \(target.lastPathComponent)",
+                undo: .remove(target),
+                redo: .createDirectory(target)
+            )
             fileOperationRevision += 1
             statusMessage = "Created \(target.lastPathComponent)"
             return target
@@ -663,6 +709,11 @@ final class WorkspaceStore: ObservableObject {
         )
         do {
             try Data().write(to: target, options: .withoutOverwriting)
+            registerHistory(
+                title: "Create \(target.lastPathComponent)",
+                undo: .remove(target),
+                redo: .createEmptyFile(target)
+            )
             fileOperationRevision += 1
             statusMessage = "Created \(target.lastPathComponent)"
             return target
@@ -686,36 +737,106 @@ final class WorkspaceStore: ObservableObject {
             for: outputDirectory.appendingPathComponent("\(archiveName).zip"),
             in: outputDirectory
         )
+        guard canCreateFile(in: outputDirectory) else {
+            lastError = "Compression failed: cannot create files in \(outputDirectory.path)."
+            statusMessage = "Compress failed"
+            return nil
+        }
 
         let process = Process()
+        let processID = UUID()
+        let standardError = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
         process.currentDirectoryURL = baseDirectory
+        process.standardError = standardError
         process.arguments = ["-r", "-X", target.path] + urls.map { relativePath(of: $0, under: baseDirectory) }
 
         let count = urls.count
         let finalName = target.lastPathComponent
-        process.terminationHandler = { finished in
+        process.terminationHandler = { [weak self, standardError] finished in
             let status = finished.terminationStatus
+            let reason = finished.terminationReason
+            let errorText =
+                String(data: standardError.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             Task { @MainActor in
-                if status == 0 {
+                guard let self else { return }
+                self.runningCompressionProcesses[processID] = nil
+                self.finishFileTask(id: processID)
+                if reason == .exit && status == 0 {
+                    self.registerHistory(
+                        title: "Compress \(finalName)",
+                        undo: .remove(target),
+                        redo: nil
+                    )
                     self.fileOperationRevision += 1
                     self.statusMessage = "Compressed \(count) item\(count == 1 ? "" : "s") to \(finalName)"
                 } else {
-                    self.lastError = "Compression failed (zip exited with code \(status))."
+                    self.lastError = self.compressionFailureMessage(
+                        status: status,
+                        reason: reason,
+                        standardError: errorText,
+                        outputDirectory: outputDirectory
+                    )
                     self.statusMessage = "Compress failed"
                 }
             }
         }
 
         do {
+            runningCompressionProcesses[processID] = process
+            beginFileTask(
+                id: processID,
+                title: "Compressing \(count) item\(count == 1 ? "" : "s")",
+                detail: finalName,
+                isCancellable: true
+            )
             try process.run()
             statusMessage = "Compressing \(count) item\(count == 1 ? "" : "s")…"
             return target
         } catch {
+            runningCompressionProcesses[processID] = nil
+            finishFileTask(id: processID)
             lastError = error.localizedDescription
             statusMessage = "Compress failed"
             return nil
         }
+    }
+
+    private func canCreateFile(in directory: URL) -> Bool {
+        let probe = directory.appendingPathComponent(".xfinder-write-test-\(UUID().uuidString)")
+        do {
+            try Data().write(to: probe, options: .withoutOverwriting)
+            try? FileManager.default.removeItem(at: probe)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func compressionFailureMessage(
+        status: Int32,
+        reason: Process.TerminationReason,
+        standardError: String,
+        outputDirectory: URL
+    ) -> String {
+        let reasonText =
+            switch reason {
+            case .exit:
+                if status == 15 {
+                    "zip could not create the archive in \(outputDirectory.path)"
+                } else {
+                    "zip exited with code \(status)"
+                }
+            case .uncaughtSignal:
+                "zip was terminated by signal \(status)"
+            @unknown default:
+                "zip ended with code \(status)"
+            }
+        guard !standardError.isEmpty else {
+            return "Compression failed (\(reasonText))."
+        }
+        return "Compression failed (\(reasonText)): \(standardError)"
     }
 
     private func relativePath(of url: URL, under base: URL) -> String {
@@ -730,12 +851,79 @@ final class WorkspaceStore: ObservableObject {
         do {
             var resultingURL: NSURL?
             try FileManager.default.trashItem(at: sourceURL, resultingItemURL: &resultingURL)
+            if let trashedURL = resultingURL as URL? {
+                registerHistory(
+                    title: "Move \(sourceURL.lastPathComponent) to Trash",
+                    undo: .move(from: trashedURL, to: sourceURL),
+                    redo: .trash(sourceURL)
+                )
+            }
             fileOperationRevision += 1
             statusMessage = "Moved \(sourceURL.lastPathComponent) to Trash"
         } catch {
             lastError = error.localizedDescription
             statusMessage = "Move to Trash failed"
         }
+    }
+
+    @discardableResult
+    func duplicate(_ sourceURL: URL) -> URL? {
+        let target = duplicateDestinationURL(for: sourceURL)
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: target)
+            registerHistory(
+                title: "Duplicate \(sourceURL.lastPathComponent)",
+                undo: .remove(target),
+                redo: .copy(from: sourceURL, to: target)
+            )
+            fileOperationRevision += 1
+            statusMessage = "Duplicated \(sourceURL.lastPathComponent)"
+            return target
+        } catch {
+            lastError = error.localizedDescription
+            statusMessage = "Duplicate failed"
+            return nil
+        }
+    }
+
+    func undoLastFileOperation() {
+        guard let entry = undoStack.popLast() else { return }
+        do {
+            _ = try applyHistoryOperation(entry.undo)
+            if entry.redo != nil {
+                redoStack.append(entry)
+            }
+            updateHistoryAvailability()
+            fileOperationRevision += 1
+            statusMessage = "Undid \(entry.title)"
+        } catch {
+            undoStack.append(entry)
+            updateHistoryAvailability()
+            lastError = error.localizedDescription
+            statusMessage = "Undo failed"
+        }
+    }
+
+    func redoLastFileOperation() {
+        guard let entry = redoStack.popLast(), let redo = entry.redo else { return }
+        do {
+            let updatedUndo = try applyHistoryOperation(redo) ?? entry.undo
+            undoStack.append(FileHistoryEntry(title: entry.title, undo: updatedUndo, redo: entry.redo))
+            updateHistoryAvailability()
+            fileOperationRevision += 1
+            statusMessage = "Redid \(entry.title)"
+        } catch {
+            redoStack.append(entry)
+            updateHistoryAvailability()
+            lastError = error.localizedDescription
+            statusMessage = "Redo failed"
+        }
+    }
+
+    func cancelFileTask(id: UUID) {
+        guard let process = runningCompressionProcesses[id] else { return }
+        process.terminate()
+        statusMessage = "Cancelling file task…"
     }
 
     func importOpenFinderWindows() {
@@ -769,6 +957,65 @@ final class WorkspaceStore: ObservableObject {
         if selectedWorkspace == nil {
             appendWorkspace(directories: [])
         }
+    }
+
+    private func registerHistory(title: String, undo: FileHistoryOperation, redo: FileHistoryOperation?) {
+        undoStack.append(FileHistoryEntry(title: title, undo: undo, redo: redo))
+        redoStack.removeAll()
+        updateHistoryAvailability()
+    }
+
+    private func updateHistoryAvailability() {
+        canUndoFileOperation = !undoStack.isEmpty
+        canRedoFileOperation = !redoStack.isEmpty
+    }
+
+    private func applyHistoryOperation(_ operation: FileHistoryOperation) throws -> FileHistoryOperation? {
+        switch operation {
+        case .remove(let url):
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+            return nil
+        case .move(let source, let target):
+            guard FileManager.default.fileExists(atPath: source.path) else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: source.path])
+            }
+            guard !FileManager.default.fileExists(atPath: target.path) else {
+                throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: target.path])
+            }
+            try FileManager.default.moveItem(at: source, to: target)
+            return .move(from: target, to: source)
+        case .copy(let source, let target):
+            guard FileManager.default.fileExists(atPath: source.path) else {
+                throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: source.path])
+            }
+            guard !FileManager.default.fileExists(atPath: target.path) else {
+                throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: target.path])
+            }
+            try FileManager.default.copyItem(at: source, to: target)
+            return .remove(target)
+        case .trash(let url):
+            var resultingURL: NSURL?
+            try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
+            guard let trashedURL = resultingURL as URL? else { return nil }
+            return .move(from: trashedURL, to: url)
+        case .createDirectory(let url):
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            return .remove(url)
+        case .createEmptyFile(let url):
+            try Data().write(to: url, options: .withoutOverwriting)
+            return .remove(url)
+        }
+    }
+
+    private func beginFileTask(id: UUID, title: String, detail: String, isCancellable: Bool) {
+        fileTasks.removeAll { $0.id == id }
+        fileTasks.append(FileTask(id: id, title: title, detail: detail, isCancellable: isCancellable))
+    }
+
+    private func finishFileTask(id: UUID) {
+        fileTasks.removeAll { $0.id == id }
     }
 
     private func load() {
@@ -835,6 +1082,22 @@ final class WorkspaceStore: ObservableObject {
             index += 1
         }
 
+        return candidate
+    }
+
+    private func duplicateDestinationURL(for sourceURL: URL) -> URL {
+        let directory = sourceURL.deletingLastPathComponent()
+        let baseName = sourceURL.deletingPathExtension().lastPathComponent
+        let pathExtension = sourceURL.pathExtension
+        let firstName = pathExtension.isEmpty ? "\(baseName) copy" : "\(baseName) copy.\(pathExtension)"
+        var candidate = directory.appendingPathComponent(firstName)
+        var index = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            let name =
+                pathExtension.isEmpty ? "\(baseName) copy \(index)" : "\(baseName) copy \(index).\(pathExtension)"
+            candidate = directory.appendingPathComponent(name)
+            index += 1
+        }
         return candidate
     }
 }

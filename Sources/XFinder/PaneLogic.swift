@@ -3,6 +3,12 @@ import Foundation
 /// Pure keyboard-selection stepping for a pane's visible rows, extracted from
 /// the view so it is unit-testable (the NSEvent plumbing itself is not).
 enum PaneSelectionLogic {
+    /// Selection state for Cmd+A: every visible row becomes selected, and the
+    /// first visible row is the anchor for later Shift extension.
+    static func selectAll(ids: [String]) -> (selection: Set<String>, anchor: String?) {
+        (Set(ids), ids.first)
+    }
+
     /// The row id an Up/Down arrow press should land on.
     /// - `ids`: visible row ids in display order.
     /// - `anchor`: the last clicked/keyed row (kept while Shift-extending).

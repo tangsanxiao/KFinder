@@ -52,6 +52,9 @@ struct ContentView: View {
         .coordinateSpace(name: tooltipCoordinateSpace)
         .environmentObject(tooltip)
         .overlay { TooltipOverlay().environmentObject(tooltip) }
+        .overlay(alignment: .bottomTrailing) {
+            FileTaskOverlay()
+        }
         .ignoresSafeArea(.container, edges: .top)
         .background(WindowChromeConfigurator())
         .sheet(isPresented: settingsBinding) {

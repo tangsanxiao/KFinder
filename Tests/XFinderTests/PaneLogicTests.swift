@@ -5,6 +5,18 @@ import Testing
 
 // MARK: - Keyboard selection stepping
 
+@Test func selectAllVisibleRowsUsesEveryIDAndFirstAnchor() {
+    let state = PaneSelectionLogic.selectAll(ids: ["a", "b", "c"])
+    #expect(state.selection == ["a", "b", "c"])
+    #expect(state.anchor == "a")
+}
+
+@Test func selectAllEmptyRowsClearsAnchor() {
+    let state = PaneSelectionLogic.selectAll(ids: [])
+    #expect(state.selection.isEmpty)
+    #expect(state.anchor == nil)
+}
+
 @Test func stepTargetReturnsNilForEmptyRows() {
     #expect(PaneSelectionLogic.stepTarget(ids: [], selection: [], anchor: nil, forward: true) == nil)
 }

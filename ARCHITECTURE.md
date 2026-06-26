@@ -42,8 +42,11 @@ every file-system mutation:
   more panes than there are folders, the grid renders greyed "add a pane"
   placeholders for the empty cells instead of auto-creating panes.
 - **File operations** — create folder, create Markdown file, copy, move, rename,
-  trash, and compress. Each mutation bumps `fileOperationRevision`, which panes
-  observe to reload while preserving local expansion state where appropriate.
+  trash, duplicate, and compress. Each mutation bumps `fileOperationRevision`,
+  which panes observe to reload while preserving local expansion state where
+  appropriate. Common operations also register undo/redo history in the store.
+- **Long file tasks** — cancellable external tasks (currently zip compression)
+  are published as `FileTask` rows and shown in the window overlay.
 - **System bookmarks** — Desktop/Documents/Downloads/etc. for the sidebar.
 
 Views never touch the file system directly; they call the store.
@@ -78,6 +81,10 @@ state and reloads expanded subfolders after file operations or FSEvents updates.
 `DisplayFormatters` turns dates/sizes into display strings (pure, injectable
 clock for testing). Directory reads run off the main thread via the async
 `contents` overload; panes guard concurrent reloads with a generation counter.
+`FileSearchService` recursively searches a focused pane's folder off-main, and
+`FileInfoService` builds the Get Info snapshot (path, kind, size, timestamps,
+permissions, access flags). `QuickLookController` delegates to the system
+`QLPreviewPanel` for Finder-style Space previews.
 
 ## Git awareness & agent bridge
 

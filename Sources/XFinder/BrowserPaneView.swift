@@ -57,6 +57,13 @@ struct BrowserPane: View {
     @State private var diffLoading = false
     @State private var diffLines: [DiffLine] = []
     @State private var diffTask: Task<Void, Never>?
+    @State private var infoSnapshot: FileInfoSnapshot?
+    @State private var showsRecursiveSearch = false
+    @State private var searchQuery = ""
+    @State private var searchResults: [FileSearchResult] = []
+    @State private var searchRunning = false
+    @State private var searchError: String?
+    @State private var searchTask: Task<Void, Never>?
     // Reloads run async (directory IO happens off the main thread); the
     // generation counter drops results from a reload that another, newer
     // reload has superseded so a slow folder can't overwrite a fast one.
@@ -140,6 +147,30 @@ struct BrowserPane: View {
         .sheet(isPresented: $showsGoToPath) {
             goToPathSheet
         }
+        .sheet(item: $infoSnapshot) { snapshot in
+            FileInfoSheet(
+                snapshot: snapshot,
+                chinese: store.settings.language.isChineseResolved,
+                onReveal: { NSWorkspace.shared.activateFileViewerSelecting([snapshot.url]) },
+                onClose: { infoSnapshot = nil }
+            )
+        }
+        .sheet(isPresented: $showsRecursiveSearch, onDismiss: { cancelSearch() }) {
+            FileSearchSheet(
+                root: currentURL,
+                query: $searchQuery,
+                results: searchResults,
+                isSearching: searchRunning,
+                errorText: searchError,
+                chinese: store.settings.language.isChineseResolved,
+                onSearch: { runRecursiveSearch() },
+                onOpen: { url in
+                    showsRecursiveSearch = false
+                    revealRecentChange(url)
+                },
+                onClose: { showsRecursiveSearch = false }
+            )
+        }
         .sheet(isPresented: $showsDiff, onDismiss: { diffTask?.cancel() }) {
             DiffSheet(
                 fileName: diffFileName,
@@ -181,6 +212,10 @@ struct BrowserPane: View {
             forwardStack.removeAll()
             expandedFolders.removeAll()
             expandedContents.removeAll()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .xfinderPaneCommand)) { notification in
+            guard let command = notification.object as? PaneCommand else { return }
+            handlePaneCommand(command)
         }
     }
 
@@ -231,6 +266,18 @@ struct BrowserPane: View {
                     trash: {
                         onFocus()
                         trashTargets(of: file)
+                    },
+                    duplicate: {
+                        onFocus()
+                        duplicateTargets(of: file)
+                    },
+                    getInfo: {
+                        onFocus()
+                        showInfo(for: file.url)
+                    },
+                    quickLook: {
+                        onFocus()
+                        quickLook([file])
                     },
                     canBrowseInline: canBrowseInline(file),
                     onBeginDrag: { beginDrag(file) },
@@ -289,6 +336,9 @@ struct BrowserPane: View {
                                 reveal: { NSWorkspace.shared.activateFileViewerSelecting([row.file.url]) },
                                 trash: { trashTargets(of: row.file) },
                                 compress: { compress(row.file) },
+                                duplicate: { duplicateTargets(of: row.file) },
+                                getInfo: { showInfo(for: row.file.url) },
+                                quickLook: { quickLook(actionTargets(for: row.file)) },
                                 claudeEnabled: store.settings.claudeIntegrationEnabled,
                                 askClaude: { askClaudeAboutSelection(row.file) },
                                 copyTo: { destination in copyTargets(of: row.file, to: destination) },
@@ -441,6 +491,12 @@ struct BrowserPane: View {
         case 5 where modifiers.contains(.command) && modifiers.contains(.shift):  // Cmd+Shift+G
             showsGoToPath = true
             return nil
+        case 3 where modifiers == [.command, .option]:  // Cmd+Option+F — recursive search
+            showRecursiveSearch()
+            return nil
+        case 0 where modifiers == [.command]:  // Cmd+A — select all visible items
+            selectAllVisibleItems()
+            return nil
         case 8 where modifiers == [.command]:  // Cmd+C — copy selection to pasteboard
             copySelectionToPasteboard()
             return nil
@@ -450,6 +506,15 @@ struct BrowserPane: View {
         case 3 where modifiers == [.command]:  // Cmd+F — filter
             showsFilter = true
             filterFieldFocused = true
+            return nil
+        case 2 where modifiers == [.command]:  // Cmd+D — duplicate
+            duplicateSelection()
+            return nil
+        case 34 where modifiers == [.command]:  // Cmd+I — Get Info
+            showInfoForSelection()
+            return nil
+        case 49 where modifiers.isEmpty:  // Space — Quick Look
+            quickLookSelection()
             return nil
         case 53:  // Esc — close the filter
             guard showsFilter else { return event }
@@ -480,6 +545,18 @@ struct BrowserPane: View {
         keyboardScrollTarget = liveViewMode == .list ? targetRow.id : targetRow.file.id
     }
 
+    private func selectAllVisibleItems() {
+        let files = selectableFilesForCurrentView
+        let state = PaneSelectionLogic.selectAll(ids: files.map(\.id))
+        cancelPendingRename()
+        selection = state.selection
+        selectionAnchor = state.anchor
+        renamingFileID = nil
+        if let first = files.first {
+            keyboardScrollTarget = liveViewMode == .list ? "\(first.id)-0" : first.id
+        }
+    }
+
     private func openSingleSelection() {
         guard let id = singleSelection, let file = loadedFiles.first(where: { $0.id == id }) else { return }
         if canBrowseInline(file) {
@@ -488,9 +565,45 @@ struct BrowserPane: View {
         open(file)
     }
 
+    private func handlePaneCommand(_ command: PaneCommand) {
+        guard store.focusedPaneID == root.id, renamingFileID == nil else { return }
+        switch command {
+        case .newFolder:
+            createFolder()
+        case .newMarkdown:
+            createMarkdownFile()
+        case .openSelection:
+            openSingleSelection()
+        case .duplicateSelection:
+            duplicateSelection()
+        case .renameSelection:
+            if let id = singleSelection, let file = loadedFiles.first(where: { $0.id == id }) {
+                beginRename(file)
+            }
+        case .getInfo:
+            showInfoForSelection()
+        case .quickLook:
+            quickLookSelection()
+        case .recursiveSearch:
+            showRecursiveSearch()
+        case .selectAll:
+            selectAllVisibleItems()
+        case .copySelection:
+            copySelectionToPasteboard()
+        case .paste:
+            pasteFromPasteboard()
+        case .moveToTrash:
+            trashSelection()
+        case .revealSelection:
+            revealSelectionInFinder()
+        case .compressSelection:
+            compressSelection()
+        }
+    }
+
     /// Cmd+C — write the selected files' URLs to the pasteboard (Finder-compatible).
     private func copySelectionToPasteboard() {
-        let urls = flatRows.map(\.file).filter { selection.contains($0.id) }.map(\.url)
+        let urls = selectedVisibleFiles.map(\.url)
         guard !urls.isEmpty else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects(urls as [NSURL])
@@ -512,7 +625,7 @@ struct BrowserPane: View {
     }
 
     private func trashSelection() {
-        let targets = flatRows.map(\.file).filter { selection.contains($0.id) }
+        let targets = selectedVisibleFiles
         guard !targets.isEmpty else { return }
         for target in targets {
             store.moveToTrash(target.url)
@@ -530,6 +643,81 @@ struct BrowserPane: View {
         } else if !expand {
             expandedFolders.remove(file.id)
         }
+    }
+
+    private func duplicateSelection() {
+        let targets = selectedVisibleFiles
+        guard !targets.isEmpty else { return }
+        for target in targets {
+            store.duplicate(target.url)
+        }
+        scheduleReload()
+    }
+
+    private func quickLookSelection() {
+        let targets = selectedVisibleFiles
+        if targets.isEmpty {
+            QuickLookController.shared.preview([currentURL])
+        } else {
+            quickLook(targets)
+        }
+    }
+
+    private func quickLook(_ files: [BrowserFileItem]) {
+        QuickLookController.shared.preview(files.map(\.url))
+    }
+
+    private func showInfoForSelection() {
+        showInfo(for: selectedVisibleFiles.first?.url ?? currentURL)
+    }
+
+    private func showInfo(for url: URL) {
+        do {
+            infoSnapshot = try FileInfoService.snapshot(for: url)
+        } catch {
+            store.lastError = error.localizedDescription
+        }
+    }
+
+    private func revealSelectionInFinder() {
+        let urls = selectedVisibleFiles.map(\.url)
+        NSWorkspace.shared.activateFileViewerSelecting(urls.isEmpty ? [currentURL] : urls)
+    }
+
+    private func compressSelection() {
+        compressTargets(selectedVisibleFiles)
+    }
+
+    private func showRecursiveSearch() {
+        onFocus()
+        showsRecursiveSearch = true
+    }
+
+    private func runRecursiveSearch() {
+        searchTask?.cancel()
+        searchError = nil
+        searchRunning = true
+        let root = currentURL
+        let query = searchQuery
+        let includeHidden = showsHiddenItems
+        searchTask = Task {
+            do {
+                let found = try await FileSearchService.search(in: root, query: query, includingHidden: includeHidden)
+                guard !Task.isCancelled else { return }
+                searchResults = found
+            } catch is CancellationError {
+                return
+            } catch {
+                searchError = error.localizedDescription
+            }
+            searchRunning = false
+        }
+    }
+
+    private func cancelSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchRunning = false
     }
 
     @ViewBuilder
@@ -558,6 +746,19 @@ struct BrowserPane: View {
             copyPath(currentURL.path)
         } label: {
             Label("Copy Path", systemImage: "doc.on.doc")
+        }
+
+        Button {
+            onFocus()
+            showInfo(for: currentURL)
+        } label: {
+            Label("Get Info", systemImage: "info.circle")
+        }
+
+        Button {
+            showRecursiveSearch()
+        } label: {
+            Label("Search Folder…", systemImage: "magnifyingglass")
         }
 
         Button {
@@ -1145,6 +1346,21 @@ struct BrowserPane: View {
         return expandedContents[selected.id].map(sorted)
     }
 
+    private var selectableFilesForCurrentView: [BrowserFileItem] {
+        switch liveViewMode {
+        case .list:
+            flatRows.map(\.file)
+        case .icons:
+            sortedItems
+        case .columns:
+            sortedItems + (selectedFolderChildren ?? [])
+        }
+    }
+
+    private var selectedVisibleFiles: [BrowserFileItem] {
+        selectableFilesForCurrentView.filter { selection.contains($0.id) }
+    }
+
     private func columnList(_ source: [BrowserFileItem], width: CGFloat) -> some View {
         LazyVStack(spacing: 0) {
             ForEach(source) { file in
@@ -1173,6 +1389,9 @@ struct BrowserPane: View {
                     copy: { copyPath(file.url.path) },
                     reveal: { NSWorkspace.shared.activateFileViewerSelecting([file.url]) },
                     trash: { trashTargets(of: file) },
+                    duplicate: { duplicateTargets(of: file) },
+                    getInfo: { showInfo(for: file.url) },
+                    quickLook: { quickLook(actionTargets(for: file)) },
                     copyTo: { destination in copyTargets(of: file, to: destination) },
                     moveTo: { destination in moveTargets(of: file, to: destination) },
                     onBeginDrag: { beginDrag(file) },
@@ -1528,9 +1747,19 @@ struct BrowserPane: View {
         scheduleReload()
     }
 
+    private func duplicateTargets(of file: BrowserFileItem) {
+        for target in actionTargets(for: file) {
+            store.duplicate(target.url)
+        }
+        scheduleReload()
+    }
+
     private func compress(_ file: BrowserFileItem) {
         onFocus()
-        let targets = actionTargets(for: file)
+        compressTargets(actionTargets(for: file))
+    }
+
+    private func compressTargets(_ targets: [BrowserFileItem]) {
         guard !targets.isEmpty else { return }
         // Output goes in the directory of the shallowest selected item, and the
         // default archive name follows that containing folder instead of the

@@ -52,3 +52,22 @@ private func waitForFile(_ url: URL, attempts: Int = 50) async -> Bool {
     #expect(second == root.appendingPathComponent("Bundle 2.zip"))
     #expect(await waitForFile(root.appendingPathComponent("Bundle 2.zip")))
 }
+
+@MainActor
+@Test func compressFailsBeforeZipWhenOutputDirectoryCannotBeCreatedIn() throws {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderZip-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let store = WorkspaceStore(supportDirectory: root.appendingPathComponent("support"))
+    let file = root.appendingPathComponent("a.txt")
+    try "aaa".write(to: file, atomically: true, encoding: .utf8)
+
+    let missingOutputDirectory = root.appendingPathComponent("missing", isDirectory: true)
+    let target = store.compress([file], relativeTo: root, archiveName: "Bundle", into: missingOutputDirectory)
+
+    #expect(target == nil)
+    #expect(store.statusMessage == "Compress failed")
+    #expect(store.lastError == "Compression failed: cannot create files in \(missingOutputDirectory.path).")
+}
