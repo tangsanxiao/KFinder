@@ -16,6 +16,7 @@ struct SidebarView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(spacing: 2) {
+                        agentInboxEntry
                         skillHubEntry
                         sessionCenterEntry
                     }
@@ -68,6 +69,24 @@ struct SidebarView: View {
 
     /// Entry into the cross-agent Skill Hub. Highlighted when active; selecting
     /// a workspace switches back to the file panes.
+    private var agentInboxEntry: some View {
+        let active = store.activePanel == .inbox
+        return HStack(spacing: 8) {
+            Image(systemName: "tray.full")
+                .font(.system(size: 12))
+                .frame(width: 16)
+                .foregroundStyle(active ? .blue : .secondary)
+            Text("Agent Inbox")
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 30)
+        .background(Rectangle().fill(active ? Color.accentColor.opacity(0.18) : Color.clear))
+        .contentShape(Rectangle())
+        .onTapGesture { store.activePanel = .inbox }
+    }
+
     private var skillHubEntry: some View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")

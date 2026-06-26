@@ -92,6 +92,13 @@ permissions, access flags). `QuickLookController` delegates to the system
   `GitDirectorySnapshot`: branch, per-path statuses (row badges), recent
   commits (the toolbar's project status card). Porcelain/log parsing is pure
   and unit-tested; a temp-repo integration test covers the real CLI.
+- `AgentInboxScanner` is the local review-workbench aggregator. It combines
+  known project roots from workspaces, stars, and Claude/Codex session metadata,
+  then attaches each project's git snapshot, recent changes, transcript-derived
+  todos/decisions, and risk findings.
+- `AgentRiskAnalyzer` is pure except for bounded text-file reads used to detect
+  likely secrets in changed files. Keep new risk rules here and cover them with
+  swift-testing tests; the UI should only render the findings.
 - `ClaudeBridge` runs the locally installed Claude Code CLI headless
   (`claude -p`) in a pane's directory — preset analysis, free-form ask, and
   selection ask all go through one editable-question sheet. "Open in Claude
@@ -109,6 +116,9 @@ permissions, access flags). `QuickLookController` delegates to the system
   and the Activity & Errors trace panel.
 - `WorkspaceStore` records every `statusMessage`/`lastError` into a capped
   `events` log (newest first) that the trace panel displays.
+- `SessionCenterView` lists local Claude/Codex transcripts and lazily builds a
+  local full-text transcript index only when the user searches, keeping the
+  default list scan cheap for large session directories.
 
 ## Persistence
 

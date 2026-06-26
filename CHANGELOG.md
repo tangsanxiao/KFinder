@@ -5,6 +5,10 @@ All notable changes to XFinder are recorded here. Newest first.
 ## [Unreleased]
 
 ### Added
+- Agent Inbox review workbench: a sidebar entry that aggregates local Claude / Codex sessions and git activity by project, then shows session counts, uncommitted changes, risk findings, extracted decisions / todos, and a commit-message draft.
+- Agent Inbox project actions: open the project in the file pane, open Terminal, open Claude Code when enabled, jump from a change to its folder, and open that file's diff.
+- Local risk analysis for agent changes: flags sensitive paths and likely secrets in changed text files before a commit is prepared.
+- Session Center transcript search: non-empty searches now lazily build a local transcript text index, so search covers title, project, and transcript body.
 - Finder-style P0 basics: Space opens system Quick Look for the current selection, Cmd+I opens a Get Info sheet, and a File Actions menu exposes Open, Quick Look, Get Info, Search Folder, Rename, Duplicate, Compress, Reveal in Finder, and Move to Trash.
 - Recursive folder search from the focused pane (Cmd+Option+F), with hidden-file behavior matching the pane's hidden-mode toggle and click-to-reveal results.
 - Undo/redo for common file operations: copy, move, rename, duplicate, create folder, create Markdown, and move to Trash. Compression can be undone by removing the created archive.

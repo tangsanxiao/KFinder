@@ -28,6 +28,8 @@ struct ContentView: View {
                 SkillHubView(isSidebarVisible: isSidebarVisible)
             case .sessions:
                 SessionCenterView(isSidebarVisible: isSidebarVisible)
+            case .inbox:
+                AgentInboxView(isSidebarVisible: isSidebarVisible)
             case .files:
                 WorkspaceDetailView(
                     focusedDirectoryID: focusedDirectoryID,

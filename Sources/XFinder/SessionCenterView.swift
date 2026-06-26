@@ -12,6 +12,8 @@ struct SessionCenterView: View {
     @State private var selectedID: SessionSummary.ID?
     @State private var agentFilter: SessionAgent?
     @State private var query = ""
+    @State private var transcriptIndex: [String: String] = [:]
+    @State private var transcriptIndexing = false
 
     @State private var transcript: SessionTranscript?
     @State private var transcriptLoading = false
@@ -36,6 +38,7 @@ struct SessionCenterView: View {
             if !q.isEmpty {
                 return session.title.localizedCaseInsensitiveContains(q)
                     || session.project.localizedCaseInsensitiveContains(q)
+                    || transcriptIndex[session.id]?.localizedCaseInsensitiveContains(q) == true
             }
             return true
         }
@@ -100,9 +103,17 @@ struct SessionCenterView: View {
                     .font(.system(size: 12))
                     .frame(width: 180)
             }
+            if transcriptIndexing {
+                ProgressView()
+                    .controlSize(.small)
+            }
         }
         .padding(.horizontal, isSidebarVisible ? 14 : 18)
         .padding(.vertical, 6)
+        .onChange(of: query) { newValue in
+            guard !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            Task { await buildTranscriptIndexIfNeeded() }
+        }
     }
 
     @ViewBuilder
@@ -261,10 +272,23 @@ struct SessionCenterView: View {
     private func reload() async {
         isLoading = true
         sessions = await SessionScanner.scan()
+        transcriptIndex = [:]
         if selectedID == nil || !sessions.contains(where: { $0.id == selectedID }) {
             selectedID = nil
         }
         isLoading = false
+    }
+
+    private func buildTranscriptIndexIfNeeded() async {
+        guard !transcriptIndexing, transcriptIndex.count < sessions.count else { return }
+        transcriptIndexing = true
+        var next = transcriptIndex
+        for session in sessions where next[session.id] == nil {
+            let transcript = await SessionScanner.transcript(for: session.url)
+            next[session.id] = transcript.messages.map(\.text).joined(separator: "\n")
+        }
+        transcriptIndex = next
+        transcriptIndexing = false
     }
 }
 

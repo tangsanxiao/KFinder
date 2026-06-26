@@ -45,6 +45,7 @@ struct SessionSummary: Identifiable, Equatable, Sendable {
     let url: URL
     let title: String
     let project: String
+    let projectPath: String?
     let modified: Date
     let sizeBytes: Int64
     /// Rough token estimate from file size (labelled as approximate in the UI).

@@ -94,6 +94,7 @@ enum SessionScanner {
             url: url,
             title: title.isEmpty ? url.deletingPathExtension().lastPathComponent : title,
             project: project,
+            projectPath: cwd,
             modified: modified,
             sizeBytes: size
         )
