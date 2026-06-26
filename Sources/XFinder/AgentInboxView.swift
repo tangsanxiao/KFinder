@@ -4,9 +4,9 @@ struct AgentInboxView: View {
     @EnvironmentObject private var store: WorkspaceStore
     let isSidebarVisible: Bool
 
-    @State private var projects: [AgentInboxProject] = []
-    @State private var isLoading = true
     @State private var selectedID: AgentInboxProject.ID?
+    @State private var selectedProjectIDs: Set<AgentInboxProject.ID> = []
+    @State private var selectionAnchorID: AgentInboxProject.ID?
     @State private var query = ""
     @State private var showsDiff = false
     @State private var diffFileName = ""
@@ -19,6 +19,7 @@ struct AgentInboxView: View {
 
     private var filtered: [AgentInboxProject] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let projects = store.agentInboxVisibleProjects
         guard !q.isEmpty else { return projects }
         return projects.filter { project in
             project.name.localizedCaseInsensitiveContains(q)
@@ -28,21 +29,32 @@ struct AgentInboxView: View {
     }
 
     private var selected: AgentInboxProject? {
-        filtered.first { $0.id == selectedID } ?? filtered.first
+        filtered.first { $0.id == selectedID }
+            ?? filtered.first { selectedProjectIDs.contains($0.id) }
+            ?? filtered.first
+    }
+
+    private var selectedProjects: [AgentInboxProject] {
+        filtered.filter { selectedProjectIDs.contains($0.id) }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            if !isLoading, !projects.isEmpty {
+            if !store.agentInboxProjects.isEmpty {
                 filterBar
                 Divider()
             }
             content
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .task { await reload() }
+        .task { await store.ensureAgentInboxLoaded() }
+        .task(id: extractionTaskID) {
+            if let selected {
+                await store.loadAgentInboxExtractedItems(for: selected)
+            }
+        }
         .sheet(isPresented: $showsDiff, onDismiss: { diffTask?.cancel() }) {
             DiffSheet(
                 fileName: diffFileName,
@@ -60,14 +72,18 @@ struct AgentInboxView: View {
         HStack(spacing: 8) {
             Text("Agent Inbox")
                 .font(.system(size: 15, weight: .semibold))
-            if !isLoading {
-                Text(loc("\(projects.count) 个项目", "\(projects.count) projects"))
+            if !store.agentInboxProjects.isEmpty {
+                Text(loc("\(filtered.count) 个项目", "\(filtered.count) projects"))
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if store.agentInboxIsRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+            }
             Button {
-                Task { await reload() }
+                Task { await store.refreshAgentInbox(force: true) }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
@@ -90,7 +106,31 @@ struct AgentInboxView: View {
                     .font(.system(size: 12))
             }
             Spacer()
-            Text(loc("本地扫描 Claude / Codex", "Local Claude / Codex scan"))
+            if !selectedProjects.isEmpty {
+                Text(loc("\(selectedProjects.count) 已选", "\(selectedProjects.count) selected"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button {
+                    hideSelectedProjects()
+                } label: {
+                    Label(loc("隐藏", "Hide"), systemImage: "eye.slash")
+                }
+                .controlSize(.small)
+                .helpTip(loc("隐藏选中的项目", "Hide selected projects"))
+            }
+            if store.agentInboxHiddenCount > 0 {
+                Button {
+                    store.agentInboxShowsHidden.toggle()
+                } label: {
+                    Image(systemName: store.agentInboxShowsHidden ? "eye" : "eye.slash")
+                }
+                .buttonStyle(.plain)
+                .helpTip(
+                    store.agentInboxShowsHidden
+                        ? loc("隐藏已忽略项目", "Hide ignored projects")
+                        : loc("显示已忽略项目", "Show ignored projects"))
+            }
+            Text(statusText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -98,18 +138,33 @@ struct AgentInboxView: View {
         .padding(.vertical, 7)
     }
 
+    private var statusText: String {
+        if let date = store.agentInboxLastUpdated {
+            return loc(
+                "上次更新 \(Self.relativeFormatter.localizedString(for: date, relativeTo: Date()))",
+                "Updated \(Self.relativeFormatter.localizedString(for: date, relativeTo: Date()))")
+        }
+        return loc("本地 Claude / Codex", "Local Claude / Codex")
+    }
+
+    private var extractionTaskID: String {
+        "\(selected?.id ?? "none"):\(store.agentInboxLastUpdated?.timeIntervalSince1970 ?? 0)"
+    }
+
     @ViewBuilder
     private var content: some View {
-        if isLoading {
+        if store.agentInboxIsRefreshing, store.agentInboxProjects.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if projects.isEmpty {
+        } else if filtered.isEmpty {
             EmptyStateView(
-                title: loc("没有发现 agent 活动", "No agent activity found"),
+                title: store.agentInboxProjects.isEmpty
+                    ? loc("没有发现 agent 活动", "No agent activity found")
+                    : loc("没有匹配的项目", "No matching projects"),
                 systemImage: "tray",
                 description: loc(
-                    "未在 Claude / Codex 会话或当前工作区中找到可聚合的项目。",
-                    "No Claude / Codex sessions or workspace projects were found."
+                    "可使用刷新重新扫描,或打开已忽略项目查看被隐藏的条目。",
+                    "Refresh to rescan, or show ignored projects to review hidden entries."
                 ))
         } else {
             HStack(spacing: 0) {
@@ -120,10 +175,12 @@ struct AgentInboxView: View {
                         project: selected,
                         chinese: chinese,
                         claudeEnabled: store.settings.claudeIntegrationEnabled,
+                        isExtractingItems: store.agentInboxExtractingProjectIDs.contains(selected.id),
                         onOpenProject: { openProject(selected.url) },
                         onOpenTerminal: { store.openTerminal(at: selected.url) },
                         onOpenClaudeCode: { store.openClaudeCode(at: selected.url) },
                         onCopyCommitMessage: { copyCommitMessage(selected.commitMessageDraft) },
+                        onOpenSession: { openSession($0) },
                         onOpenChange: { openChange($0) },
                         onShowDiff: { showDiff(for: $0, project: selected) }
                     )
@@ -141,27 +198,122 @@ struct AgentInboxView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(filtered) { project in
-                    AgentInboxProjectRow(project: project, isSelected: project.id == selected?.id, chinese: chinese)
-                        .contentShape(Rectangle())
-                        .onTapGesture { selectedID = project.id }
+                    AgentInboxProjectRow(
+                        project: project,
+                        isSelected: isProjectSelected(project),
+                        isPinned: store.isAgentInboxProjectPinned(project),
+                        isHidden: store.isAgentInboxProjectHidden(project),
+                        chinese: chinese
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectProject(project) }
+                    .contextMenu {
+                        Button {
+                            store.toggleAgentInboxPin(project)
+                        } label: {
+                            Label(
+                                store.isAgentInboxProjectPinned(project)
+                                    ? loc("取消置顶", "Unpin")
+                                    : loc("置顶", "Pin"),
+                                systemImage: "pin")
+                        }
+                        Divider()
+                        if selectedProjects.count > 1, selectedProjectIDs.contains(project.id) {
+                            Button {
+                                hideSelectedProjects()
+                            } label: {
+                                Label(
+                                    loc("隐藏 \(selectedProjects.count) 个项目", "Hide \(selectedProjects.count) Projects"),
+                                    systemImage: "eye.slash")
+                            }
+                            Divider()
+                        }
+                        Button {
+                            if store.isAgentInboxProjectHidden(project) {
+                                store.unhideAgentInboxProject(project)
+                            } else {
+                                store.hideAgentInboxProject(project)
+                                if selectedID == project.id { selectedID = nil }
+                            }
+                        } label: {
+                            Label(
+                                store.isAgentInboxProjectHidden(project)
+                                    ? loc("恢复到 Inbox", "Restore to Inbox")
+                                    : loc("从 Inbox 隐藏", "Hide from Inbox"),
+                                systemImage: store.isAgentInboxProjectHidden(project) ? "eye" : "eye.slash")
+                        }
+                    }
                 }
             }
         }
     }
 
-    private func reload() async {
-        isLoading = true
-        let loaded = await AgentInboxScanner.scan(workspaces: store.workspaces, stars: store.stars)
-        projects = loaded
-        if selectedID == nil || !loaded.contains(where: { $0.id == selectedID }) {
-            selectedID = loaded.first?.id
-        }
-        isLoading = false
-    }
-
     private func openProject(_ url: URL) {
         store.activePanel = .files
         _ = store.openLocation(url: url, title: url.lastPathComponent, in: store.focusedPaneID)
+    }
+
+    private func isProjectSelected(_ project: AgentInboxProject) -> Bool {
+        selectedProjectIDs.isEmpty ? project.id == selected?.id : selectedProjectIDs.contains(project.id)
+    }
+
+    private func selectProject(_ project: AgentInboxProject) {
+        let modifiers = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifiers.contains(.shift), let anchorID = selectionAnchorID {
+            selectProjectRange(from: anchorID, to: project.id)
+        } else if modifiers.contains(.command) {
+            toggleProjectSelection(project)
+        } else {
+            selectedProjectIDs = [project.id]
+            selectedID = project.id
+            selectionAnchorID = project.id
+        }
+    }
+
+    private func selectProjectRange(from anchorID: AgentInboxProject.ID, to targetID: AgentInboxProject.ID) {
+        guard let anchorIndex = filtered.firstIndex(where: { $0.id == anchorID }),
+            let targetIndex = filtered.firstIndex(where: { $0.id == targetID })
+        else {
+            selectedProjectIDs = [targetID]
+            selectedID = targetID
+            selectionAnchorID = targetID
+            return
+        }
+        let bounds = min(anchorIndex, targetIndex)...max(anchorIndex, targetIndex)
+        selectedProjectIDs = Set(filtered[bounds].map(\.id))
+        selectedID = targetID
+    }
+
+    private func toggleProjectSelection(_ project: AgentInboxProject) {
+        if selectedProjectIDs.isEmpty, let selectedID {
+            selectedProjectIDs.insert(selectedID)
+        }
+        if selectedProjectIDs.contains(project.id) {
+            selectedProjectIDs.remove(project.id)
+        } else {
+            selectedProjectIDs.insert(project.id)
+            selectedID = project.id
+        }
+        if selectedProjectIDs.isEmpty {
+            selectedID = nil
+        } else if let selectedID, !selectedProjectIDs.contains(selectedID) {
+            self.selectedID = filtered.first { selectedProjectIDs.contains($0.id) }?.id
+        }
+        selectionAnchorID = project.id
+    }
+
+    private func hideSelectedProjects() {
+        let targets = selectedProjects
+        guard !targets.isEmpty else { return }
+        store.hideAgentInboxProjects(targets)
+        selectedProjectIDs.removeAll()
+        selectedID = nil
+        selectionAnchorID = nil
+    }
+
+    private func openSession(_ session: SessionSummary) {
+        store.sessionCenterRequestedSessionID = session.id
+        store.activePanel = .sessions
     }
 
     private func openChange(_ change: RecentChange) {
@@ -199,11 +351,19 @@ struct AgentInboxView: View {
         NSPasteboard.general.setString(text, forType: .string)
         store.statusMessage = loc("已复制 commit message", "Copied commit message")
     }
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
 }
 
 private struct AgentInboxProjectRow: View {
     let project: AgentInboxProject
     let isSelected: Bool
+    let isPinned: Bool
+    let isHidden: Bool
     let chinese: Bool
 
     var body: some View {
@@ -216,6 +376,16 @@ private struct AgentInboxProjectRow: View {
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
                 Spacer()
+                if isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.blue)
+                }
+                if isHidden {
+                    Image(systemName: "eye.slash")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
                 if project.changedCount > 0 {
                     Text("\(project.changedCount)")
                         .font(.system(size: 10, weight: .bold))
@@ -238,6 +408,7 @@ private struct AgentInboxProjectRow: View {
             .font(.system(size: 10))
             .foregroundStyle(.secondary)
         }
+        .opacity(isHidden ? 0.58 : 1)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -257,4 +428,5 @@ private struct AgentInboxProjectRow: View {
         formatter.dateFormat = "MM-dd HH:mm"
         return formatter
     }()
+
 }

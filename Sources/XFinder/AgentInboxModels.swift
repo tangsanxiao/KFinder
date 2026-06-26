@@ -54,7 +54,7 @@ struct AgentInboxProject: Identifiable, Equatable {
     let gitSnapshot: GitDirectorySnapshot?
     let recentChanges: [RecentChange]
     let findings: [AgentRiskFinding]
-    let extractedItems: [AgentTodoDecision]
+    var extractedItems: [AgentTodoDecision]
     let commitMessageDraft: String
 
     var latestActivity: Date {
@@ -69,5 +69,45 @@ struct AgentInboxProject: Identifiable, Equatable {
 
     var changedCount: Int {
         gitSnapshot?.changedPathCount ?? 0
+    }
+}
+
+struct AgentInboxPreferences: Codable, Equatable {
+    var hiddenProjectPaths: Set<String> = []
+    var pinnedProjectPaths: Set<String> = []
+}
+
+enum AgentInboxProjectCatalog {
+    static func key(for url: URL) -> String {
+        url.standardizedFileURL.path
+    }
+
+    static func key(for project: AgentInboxProject) -> String {
+        key(for: project.url)
+    }
+
+    static func visibleProjects(
+        _ projects: [AgentInboxProject],
+        preferences: AgentInboxPreferences,
+        showsHidden: Bool
+    ) -> [AgentInboxProject] {
+        projects
+            .filter { project in
+                showsHidden || !preferences.hiddenProjectPaths.contains(key(for: project))
+            }
+            .sorted { lhs, rhs in
+                let lhsKey = key(for: lhs)
+                let rhsKey = key(for: rhs)
+                let lhsHidden = preferences.hiddenProjectPaths.contains(lhsKey)
+                let rhsHidden = preferences.hiddenProjectPaths.contains(rhsKey)
+                if lhsHidden != rhsHidden { return !lhsHidden }
+
+                let lhsPinned = preferences.pinnedProjectPaths.contains(lhsKey)
+                let rhsPinned = preferences.pinnedProjectPaths.contains(rhsKey)
+                if lhsPinned != rhsPinned { return lhsPinned }
+
+                if lhs.latestActivity != rhs.latestActivity { return lhs.latestActivity > rhs.latestActivity }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
     }
 }

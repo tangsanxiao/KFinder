@@ -94,8 +94,13 @@ permissions, access flags). `QuickLookController` delegates to the system
   and unit-tested; a temp-repo integration test covers the real CLI.
 - `AgentInboxScanner` is the local review-workbench aggregator. It combines
   known project roots from workspaces, stars, and Claude/Codex session metadata,
-  then attaches each project's git snapshot, recent changes, transcript-derived
-  todos/decisions, and risk findings.
+  then attaches each project's git snapshot, recent changes, and lightweight
+  risk findings. The list pass never parses whole transcripts; decisions/todos
+  are extracted lazily when a project is selected.
+- `WorkspaceStore` owns the Agent Inbox cache, refresh state, selected-project
+  transcript extraction state, and local project governance preferences (hidden
+  / pinned). Entering the Inbox reuses the cached snapshot; the refresh button
+  is the explicit full rescan.
 - `AgentRiskAnalyzer` is pure except for bounded text-file reads used to detect
   likely secrets in changed files. Keep new risk rules here and cover them with
   swift-testing tests; the UI should only render the findings.
@@ -127,6 +132,8 @@ permissions, access flags). `QuickLookController` delegates to the system
 
 - Workspaces → JSON in `~/Library/Application Support/XFinder/` (migrated from a
   legacy `FinderHub` directory if present).
+- Agent Inbox hidden/pinned projects → `agent-inbox-preferences.json` in the
+  same Application Support directory.
 - `dist/`, `release/`, `.build/`, and `AI_CONTEXT.md` are gitignored.
 
 ## CI / distribution

@@ -55,6 +55,19 @@ final class WorkspaceStore: ObservableObject {
 
     enum ActivePanel { case files, skills, sessions, inbox }
 
+    @Published private(set) var agentInboxProjects: [AgentInboxProject] = []
+    @Published private(set) var agentInboxIsRefreshing = false
+    @Published private(set) var agentInboxLastUpdated: Date?
+    @Published var agentInboxShowsHidden = false
+    @Published private(set) var agentInboxExtractingProjectIDs: Set<String> = []
+    @Published private(set) var agentInboxPreferences = AgentInboxPreferences() {
+        didSet {
+            guard agentInboxPreferences != oldValue else { return }
+            saveAgentInboxPreferences()
+        }
+    }
+    @Published var sessionCenterRequestedSessionID: SessionSummary.ID?
+
     /// Back-compat shim: the sidebar/Skill Center still read/write this.
     var showsSkillHub: Bool {
         get { activePanel == .skills }
@@ -87,10 +100,12 @@ final class WorkspaceStore: ObservableObject {
     private let paneLocationsURL: URL
     private let paneSortOrdersURL: URL
     private let settingsURL: URL
+    private let agentInboxPreferencesURL: URL
     private let finderController = FinderController()
     private var runningCompressionProcesses: [UUID: Process] = [:]
     private var undoStack: [FileHistoryEntry] = []
     private var redoStack: [FileHistoryEntry] = []
+    private var agentInboxExtractedProjectIDs: Set<String> = []
 
     /// - Parameter supportDirectory: base directory for persistence. Defaults to
     ///   the real Application Support location; tests pass a temp directory to
@@ -106,6 +121,7 @@ final class WorkspaceStore: ObservableObject {
         paneLocationsURL = directory.appendingPathComponent("pane-locations.json")
         paneSortOrdersURL = directory.appendingPathComponent("pane-sort-orders.json")
         settingsURL = directory.appendingPathComponent("settings.json")
+        agentInboxPreferencesURL = directory.appendingPathComponent("agent-inbox-preferences.json")
 
         if supportDirectory == nil {
             let legacyPersistenceURL =
@@ -123,6 +139,7 @@ final class WorkspaceStore: ObservableObject {
         loadPaneLocations()
         loadPaneSortOrders()
         loadSettings()
+        loadAgentInboxPreferences()
     }
 
     private func loadSettings() {
@@ -154,6 +171,123 @@ final class WorkspaceStore: ObservableObject {
 
     func clearEvents() {
         events.removeAll()
+    }
+
+    var agentInboxVisibleProjects: [AgentInboxProject] {
+        AgentInboxProjectCatalog.visibleProjects(
+            agentInboxProjects,
+            preferences: agentInboxPreferences,
+            showsHidden: agentInboxShowsHidden
+        )
+    }
+
+    var agentInboxHiddenCount: Int {
+        agentInboxProjects.filter { isAgentInboxProjectHidden($0) }.count
+    }
+
+    func ensureAgentInboxLoaded() async {
+        guard agentInboxProjects.isEmpty else { return }
+        await refreshAgentInbox(force: false)
+    }
+
+    func refreshAgentInbox(force: Bool) async {
+        guard force || agentInboxProjects.isEmpty else { return }
+        guard !agentInboxIsRefreshing else { return }
+        agentInboxIsRefreshing = true
+        let existingExtractedItems =
+            force
+            ? [:]
+            : Dictionary(uniqueKeysWithValues: agentInboxProjects.map { ($0.id, $0.extractedItems) })
+
+        var loaded = await AgentInboxScanner.scan(workspaces: workspaces, stars: stars)
+        for index in loaded.indices {
+            if let items = existingExtractedItems[loaded[index].id] {
+                loaded[index].extractedItems = items
+            }
+        }
+        agentInboxProjects = loaded
+        agentInboxLastUpdated = Date()
+        agentInboxIsRefreshing = false
+        agentInboxExtractedProjectIDs = Set(loaded.filter { !$0.extractedItems.isEmpty }.map(\.id))
+        statusMessage = "Agent Inbox refreshed"
+    }
+
+    func loadAgentInboxExtractedItems(for project: AgentInboxProject) async {
+        let id = project.id
+        guard !agentInboxExtractedProjectIDs.contains(id),
+            !agentInboxExtractingProjectIDs.contains(id)
+        else { return }
+        guard agentInboxProjects.contains(where: { $0.id == id }) else { return }
+
+        agentInboxExtractingProjectIDs.insert(id)
+        let items = await AgentInboxScanner.extractedItems(from: project.sessions)
+        if let index = agentInboxProjects.firstIndex(where: { $0.id == id }) {
+            agentInboxProjects[index].extractedItems = Array(items.prefix(8))
+        }
+        agentInboxExtractedProjectIDs.insert(id)
+        agentInboxExtractingProjectIDs.remove(id)
+    }
+
+    func isAgentInboxProjectHidden(_ project: AgentInboxProject) -> Bool {
+        agentInboxPreferences.hiddenProjectPaths.contains(AgentInboxProjectCatalog.key(for: project))
+    }
+
+    func isAgentInboxProjectPinned(_ project: AgentInboxProject) -> Bool {
+        agentInboxPreferences.pinnedProjectPaths.contains(AgentInboxProjectCatalog.key(for: project))
+    }
+
+    func hideAgentInboxProject(_ project: AgentInboxProject) {
+        let key = AgentInboxProjectCatalog.key(for: project)
+        var preferences = agentInboxPreferences
+        preferences.hiddenProjectPaths.insert(key)
+        preferences.pinnedProjectPaths.remove(key)
+        agentInboxPreferences = preferences
+        statusMessage = "Hidden \(project.name) from Agent Inbox"
+    }
+
+    func hideAgentInboxProjects(_ projects: [AgentInboxProject]) {
+        guard !projects.isEmpty else { return }
+        var preferences = agentInboxPreferences
+        for project in projects {
+            let key = AgentInboxProjectCatalog.key(for: project)
+            preferences.hiddenProjectPaths.insert(key)
+            preferences.pinnedProjectPaths.remove(key)
+        }
+        agentInboxPreferences = preferences
+        statusMessage = "Hidden \(projects.count) project\(projects.count == 1 ? "" : "s") from Agent Inbox"
+    }
+
+    func unhideAgentInboxProject(_ project: AgentInboxProject) {
+        var preferences = agentInboxPreferences
+        preferences.hiddenProjectPaths.remove(AgentInboxProjectCatalog.key(for: project))
+        agentInboxPreferences = preferences
+        statusMessage = "Restored \(project.name) to Agent Inbox"
+    }
+
+    func toggleAgentInboxPin(_ project: AgentInboxProject) {
+        let key = AgentInboxProjectCatalog.key(for: project)
+        var preferences = agentInboxPreferences
+        if preferences.pinnedProjectPaths.contains(key) {
+            preferences.pinnedProjectPaths.remove(key)
+            statusMessage = "Unpinned \(project.name)"
+        } else {
+            preferences.pinnedProjectPaths.insert(key)
+            preferences.hiddenProjectPaths.remove(key)
+            statusMessage = "Pinned \(project.name)"
+        }
+        agentInboxPreferences = preferences
+    }
+
+    private func loadAgentInboxPreferences() {
+        guard let data = try? Data(contentsOf: agentInboxPreferencesURL),
+            let decoded = try? JSONDecoder().decode(AgentInboxPreferences.self, from: data)
+        else { return }
+        agentInboxPreferences = decoded
+    }
+
+    private func saveAgentInboxPreferences() {
+        guard let data = try? JSONEncoder.pretty.encode(agentInboxPreferences) else { return }
+        try? data.write(to: agentInboxPreferencesURL, options: .atomic)
     }
 
     var selectedWorkspace: Workspace? {

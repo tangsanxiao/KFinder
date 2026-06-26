@@ -99,6 +99,9 @@
 
 - **要求**:扫描各 agent 目录的能力(Skill Center、Session Center)默认**只读**;解析按 agent 写独立适配器,且解析逻辑(frontmatter / JSONL 行 → 消息、token 估算)抽成纯函数放 `*Models`/`*Parsing` 并配单测,文件 IO 放 `*Scanner`。
 - **要求**:列表扫描必须**廉价**——会话文件可能很大(单机 ~400MB),列表只 stat + 头部读(`FileHandle.read(upToCount:)`),完整解析(transcript)在选中时惰性做;token 是估算(≈,字符/4 或字节/4),UI 要标注"≈"。
+- **情况**:Agent Inbox 聚合项目列表时同时扫 git 与 session。
+  **要求**:Inbox 入口必须复用 `WorkspaceStore` 缓存;列表扫描只做 session summary/git status/轻量风险规则,完整 transcript 抽取只能在选中项目后懒加载;隐藏/置顶这类用户治理状态要持久化并配纯逻辑测试。
+  **原因**:曾经每次进入 Inbox 都全量扫描并解析多个完整 transcript,切换入口也会变慢;项目噪音无法治理会让主入口失去审查价值。
 - **要求**:`FileManager.DirectoryEnumerator` 的迭代在 async 上下文不可用,递归收集文件要放在**同步**辅助函数里再被 async 调用。
 - **情况**:第三方 LLM(会话总结)需要用户自填 API key。
   **要求**:默认关闭;key 存本机设置、只发往用户配置的 endpoint;请求构造(`makeRequest`)和响应解析(`parseContent`)写成纯函数配单测,网络调用单独一层。**绝不**把 key 发往其它地方或记日志。

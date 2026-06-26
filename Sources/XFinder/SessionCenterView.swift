@@ -58,6 +58,11 @@ struct SessionCenterView: View {
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .task { await reload() }
+        .onChange(of: store.sessionCenterRequestedSessionID) { requestedID in
+            guard let requestedID, let session = sessions.first(where: { $0.id == requestedID }) else { return }
+            select(session)
+            store.sessionCenterRequestedSessionID = nil
+        }
     }
 
     private var header: some View {
@@ -273,6 +278,15 @@ struct SessionCenterView: View {
         isLoading = true
         sessions = await SessionScanner.scan()
         transcriptIndex = [:]
+        if let requestedID = store.sessionCenterRequestedSessionID,
+            let requested = sessions.first(where: { $0.id == requestedID })
+        {
+            selectedID = requestedID
+            isLoading = false
+            select(requested)
+            store.sessionCenterRequestedSessionID = nil
+            return
+        }
         if selectedID == nil || !sessions.contains(where: { $0.id == selectedID }) {
             selectedID = nil
         }

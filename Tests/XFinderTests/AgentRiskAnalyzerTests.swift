@@ -128,3 +128,79 @@ import Testing
     #expect(project.riskLevel == .high)
     #expect(project.changedCount == 2)
 }
+
+@Test func agentInboxCatalogAppliesPinnedAndHiddenPreferences() {
+    let pinned = makeAgentInboxProject(name: "Pinned", path: "/repo/pinned", modified: 10)
+    let normal = makeAgentInboxProject(name: "Normal", path: "/repo/normal", modified: 30)
+    let hidden = makeAgentInboxProject(name: "Hidden", path: "/repo/hidden", modified: 50)
+    let projects = [normal, hidden, pinned]
+    let preferences = AgentInboxPreferences(
+        hiddenProjectPaths: ["/repo/hidden"],
+        pinnedProjectPaths: ["/repo/pinned"]
+    )
+
+    let visible = AgentInboxProjectCatalog.visibleProjects(projects, preferences: preferences, showsHidden: false)
+    #expect(visible.map(\.name) == ["Pinned", "Normal"])
+
+    let withHidden = AgentInboxProjectCatalog.visibleProjects(projects, preferences: preferences, showsHidden: true)
+    #expect(withHidden.map(\.name) == ["Pinned", "Normal", "Hidden"])
+}
+
+@MainActor
+@Test func agentInboxPreferencesPersistAcrossStoreInstances() throws {
+    let support = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderInboxPrefs-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: support) }
+
+    let project = makeAgentInboxProject(name: "Project", path: "/repo/project", modified: 1)
+    let first = WorkspaceStore(supportDirectory: support)
+    first.hideAgentInboxProject(project)
+
+    let second = WorkspaceStore(supportDirectory: support)
+    #expect(second.isAgentInboxProjectHidden(project))
+    second.toggleAgentInboxPin(project)
+
+    let third = WorkspaceStore(supportDirectory: support)
+    #expect(!third.isAgentInboxProjectHidden(project))
+    #expect(third.isAgentInboxProjectPinned(project))
+}
+
+@MainActor
+@Test func agentInboxBulkHidePersistsAndClearsPinnedState() throws {
+    let support = FileManager.default.temporaryDirectory
+        .appendingPathComponent("XFinderInboxBulkPrefs-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: support) }
+
+    let firstProject = makeAgentInboxProject(name: "One", path: "/repo/one", modified: 1)
+    let secondProject = makeAgentInboxProject(name: "Two", path: "/repo/two", modified: 2)
+    let first = WorkspaceStore(supportDirectory: support)
+    first.toggleAgentInboxPin(firstProject)
+    first.hideAgentInboxProjects([firstProject, secondProject])
+
+    let second = WorkspaceStore(supportDirectory: support)
+    #expect(second.isAgentInboxProjectHidden(firstProject))
+    #expect(second.isAgentInboxProjectHidden(secondProject))
+    #expect(!second.isAgentInboxProjectPinned(firstProject))
+}
+
+private func makeAgentInboxProject(name: String, path: String, modified: TimeInterval) -> AgentInboxProject {
+    AgentInboxProject(
+        id: path,
+        name: name,
+        url: URL(fileURLWithPath: path),
+        sessions: [],
+        gitSnapshot: nil,
+        recentChanges: [
+            RecentChange(
+                url: URL(fileURLWithPath: path).appendingPathComponent("file.swift"),
+                status: .modified,
+                modified: Date(timeIntervalSince1970: modified)
+            )
+        ],
+        findings: [],
+        extractedItems: [],
+        commitMessageDraft: "chore: update \(name)"
+    )
+}

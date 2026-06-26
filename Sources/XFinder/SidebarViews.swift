@@ -106,7 +106,7 @@ struct SidebarView: View {
         .onTapGesture { store.activePanel = .skills }
     }
 
-    /// Entry into the cross-agent Session Center.
+    /// Secondary entry into the full transcript catalog.
     private var sessionCenterEntry: some View {
         let active = store.activePanel == .sessions
         return HStack(spacing: 8) {
@@ -114,7 +114,7 @@ struct SidebarView: View {
                 .font(.system(size: 12))
                 .frame(width: 16)
                 .foregroundStyle(active ? .blue : .secondary)
-            Text(store.loc("会话中心", "Session Center"))
+            Text(store.loc("全部会话", "All Sessions"))
                 .lineLimit(1)
             Spacer(minLength: 0)
         }

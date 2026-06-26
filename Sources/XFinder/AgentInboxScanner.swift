@@ -32,7 +32,6 @@ enum AgentInboxScanner {
             let snapshot = await GitStatusService.snapshot(for: url)
             let changes = snapshot.map { GitStatusService.recentChanges(in: $0, limit: 30) } ?? []
             let findings = AgentRiskAnalyzer.findings(for: changes)
-            let extracted = await extractedItems(from: projectSessions)
             let name = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
             projects.append(
                 AgentInboxProject(
@@ -43,7 +42,7 @@ enum AgentInboxScanner {
                     gitSnapshot: snapshot,
                     recentChanges: changes,
                     findings: findings,
-                    extractedItems: Array(extracted.prefix(8)),
+                    extractedItems: [],
                     commitMessageDraft: AgentRiskAnalyzer.commitMessageDraft(projectName: name, changes: changes)
                 ))
         }
@@ -53,7 +52,7 @@ enum AgentInboxScanner {
         }
     }
 
-    private static func extractedItems(from sessions: [SessionSummary]) async -> [AgentTodoDecision] {
+    static func extractedItems(from sessions: [SessionSummary]) async -> [AgentTodoDecision] {
         var result: [AgentTodoDecision] = []
         for session in sessions.prefix(8) {
             let transcript = await SessionScanner.transcript(for: session.url)

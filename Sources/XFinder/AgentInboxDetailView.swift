@@ -4,10 +4,12 @@ struct AgentInboxDetail: View {
     let project: AgentInboxProject
     let chinese: Bool
     let claudeEnabled: Bool
+    let isExtractingItems: Bool
     let onOpenProject: () -> Void
     let onOpenTerminal: () -> Void
     let onOpenClaudeCode: () -> Void
     let onCopyCommitMessage: () -> Void
+    let onOpenSession: (SessionSummary) -> Void
     let onOpenChange: (RecentChange) -> Void
     let onShowDiff: (RecentChange) -> Void
 
@@ -21,11 +23,12 @@ struct AgentInboxDetail: View {
                 if !project.findings.isEmpty { findingsSection }
                 changesSection
                 sessionsSection
-                if !project.extractedItems.isEmpty { extractedSection }
+                if isExtractingItems || !project.extractedItems.isEmpty { extractedSection }
                 commitSection
             }
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
         }
     }
 
@@ -162,20 +165,29 @@ struct AgentInboxDetail: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(project.sessions.prefix(8)) { session in
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack {
-                                Text(session.title)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(session.agent.displayName)
+                        Button {
+                            onOpenSession(session)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack {
+                                    Text(session.title)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .lineLimit(1)
+                                    Spacer()
+                                    Text(session.agent.displayName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "arrow.right.circle")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text(Self.dateFormatter.string(from: session.modified))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.tertiary)
                             }
-                            Text(Self.dateFormatter.string(from: session.modified))
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -184,16 +196,26 @@ struct AgentInboxDetail: View {
 
     private var extractedSection: some View {
         section(title: loc("决策 / 待办", "Decisions / todos"), image: "checklist") {
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(project.extractedItems) { item in
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(item.kind == .todo ? "TODO" : "DEC")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(item.kind == .todo ? .orange : .blue)
-                            .frame(width: 34, alignment: .leading)
-                        Text(item.text)
-                            .font(.system(size: 12))
-                            .lineLimit(3)
+            if isExtractingItems {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(loc("正在读取相关会话…", "Reading related sessions…"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(project.extractedItems) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(item.kind == .todo ? "TODO" : "DEC")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(item.kind == .todo ? .orange : .blue)
+                                .frame(width: 34, alignment: .leading)
+                            Text(item.text)
+                                .font(.system(size: 12))
+                                .lineLimit(3)
+                        }
                     }
                 }
             }
